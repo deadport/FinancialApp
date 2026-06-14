@@ -111,6 +111,13 @@ export function initDb(): Database.Database {
     db.exec("UPDATE categories SET is_fixed = 1 WHERE name IN ('Casa', 'Subscrições')");
   }
 
+  // Migração: metadata opcional nas transações (tags + projeto), JSON nullable.
+  // Retrocompatível: transações antigas ficam com metadata = NULL.
+  const txCols = db.prepare("PRAGMA table_info(transactions)").all() as { name: string }[];
+  if (!txCols.some((c) => c.name === 'metadata')) {
+    db.exec('ALTER TABLE transactions ADD COLUMN metadata TEXT');
+  }
+
   upsertSetting(SCHEMA_VERSION_KEY, '1');
   ensureFirstRunState();
   ensurePreference(DASHBOARD_WIDGETS_KEY, {

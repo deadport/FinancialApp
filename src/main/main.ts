@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
@@ -15,7 +15,7 @@ import {
 } from './db';
 import { importFile, matchNorm } from './importer';
 import { configureAutoUpdates, registerUpdaterIpc } from './updater';
-import type { TxFilters } from '../shared/types';
+import type { TransactionMetadata, TxFilters } from '../shared/types';
 
 // Garante que a BD fica sempre em ~/Library/Application Support/FinancialApp
 app.setName('FinancialApp');
@@ -80,6 +80,7 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   configureAutoUpdates(win);
+  startReminderScheduler();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -160,38 +161,44 @@ function registerIpc() {
 
   ipcMain.handle('tx:list', (_e, filters: TxFilters = {}) => {
     const db = getDb();
-    const where: string[] = [];
-    const params: Record<string, unknown> = {};
-    if (filters.search) { where.push('t.description LIKE @search'); params.search = `%${filters.search}%`; }
-    if (filters.categoryId != null) { where.push('t.category_id = @categoryId'); params.categoryId = filters.categoryId; }
-    if (filters.kind === 'expense') where.push('t.is_income = 0');
-    if (filters.kind === 'income') where.push('t.is_income = 1');
-    if (filters.from) { where.push('t.date >= @from'); params.from = filters.from; }
-    if (filters.to) { where.push('t.date <= @to'); params.to = filters.to; }
-    const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const { clause: w, params } = buildTxWhere(filters);
     const limit = Math.min(filters.limit ?? 200, 500);
     const offset = filters.offset ?? 0;
-    const rows = db.prepare(`
+    const rows = (db.prepare(`
       SELECT t.*, c.name AS category_name FROM transactions t
       LEFT JOIN categories c ON c.id = t.category_id
       ${w} ORDER BY t.date DESC, t.id DESC LIMIT ${limit} OFFSET ${offset}
-    `).all(params);
+    `).all(params) as Record<string, unknown>[]).map(withParsedMetadata);
     const agg = db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(t.amount), 0) AS s FROM transactions t ${w}`).get(params) as { c: number; s: number };
     return { rows, total: agg.c, sum: agg.s };
+  });
+
+  // Guarda/limpa a metadata opcional (tags + projeto) de uma transação
+  ipcMain.handle('tx:setMetadata', (_e, id: number, metadata: TransactionMetadata | null) => {
+    const clean = normalizeMetadata(metadata);
+    getDb().prepare('UPDATE transactions SET metadata = ? WHERE id = ?')
+      .run(clean ? JSON.stringify(clean) : null, id);
+    return true;
+  });
+
+  // Valores de tags/projetos existentes — para mostrar filtros só quando há dados
+  ipcMain.handle('tx:metaFacets', () => {
+    const db = getDb();
+    const tags = (db.prepare(`
+      SELECT DISTINCT je.value AS v FROM transactions t, json_each(t.metadata, '$.tags') je
+      WHERE t.metadata IS NOT NULL ORDER BY v
+    `).all() as { v: string }[]).map((r) => r.v).filter(Boolean);
+    const projects = (db.prepare(`
+      SELECT DISTINCT json_extract(t.metadata, '$.project') AS p FROM transactions t
+      WHERE p IS NOT NULL AND p != '' ORDER BY p
+    `).all() as { p: string }[]).map((r) => r.p).filter(Boolean);
+    return { tags, projects };
   });
 
   ipcMain.handle('tx:exportCsv', async (_e, filters: TxFilters = {}) => {
     if (!win) return null;
     const db = getDb();
-    const where: string[] = [];
-    const params: Record<string, unknown> = {};
-    if (filters.search) { where.push('t.description LIKE @search'); params.search = `%${filters.search}%`; }
-    if (filters.categoryId != null) { where.push('t.category_id = @categoryId'); params.categoryId = filters.categoryId; }
-    if (filters.kind === 'expense') where.push('t.is_income = 0');
-    if (filters.kind === 'income') where.push('t.is_income = 1');
-    if (filters.from) { where.push('t.date >= @from'); params.from = filters.from; }
-    if (filters.to) { where.push('t.date <= @to'); params.to = filters.to; }
-    const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const { clause: w, params } = buildTxWhere(filters);
     const rows = db.prepare(`
       SELECT t.date, t.description, COALESCE(c.name, '') AS category, t.amount, t.currency
       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
@@ -612,6 +619,71 @@ function registerIpc() {
   ipcMain.handle('imports:list', () => {
     return getDb().prepare('SELECT * FROM imports ORDER BY id DESC LIMIT 30').all();
   });
+}
+
+// Lembrete mensal opcional: notificação local a partir do dia escolhido.
+interface ReminderConfig { enabled: boolean; day: number }
+
+function checkReminder() {
+  const cfg = getPreference<ReminderConfig>('reminder', { enabled: false, day: 1 });
+  if (!cfg.enabled || !Notification.isSupported()) return;
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const day = Math.min(Math.max(Math.round(cfg.day) || 1, 1), 28);
+  if (now.getDate() < day) return;
+  if (getPreference<string>('reminder_last_month', '') === monthKey) return;
+
+  setPreference('reminder_last_month', monthKey);
+  new Notification({
+    title: 'FinancialApp',
+    body: 'Lembrete: importa os teus extratos para manter as contas atualizadas.',
+  }).show();
+}
+
+function startReminderScheduler() {
+  checkReminder();
+  // Reavalia periodicamente enquanto a app está aberta (a cada 6 horas)
+  setInterval(checkReminder, 6 * 60 * 60 * 1000);
+}
+
+// Constrói a cláusula WHERE partilhada por tx:list e tx:exportCsv (inclui tags/projeto via JSON1)
+function buildTxWhere(filters: TxFilters) {
+  const where: string[] = [];
+  const params: Record<string, unknown> = {};
+  if (filters.search) { where.push('t.description LIKE @search'); params.search = `%${filters.search}%`; }
+  if (filters.categoryId != null) { where.push('t.category_id = @categoryId'); params.categoryId = filters.categoryId; }
+  if (filters.kind === 'expense') where.push('t.is_income = 0');
+  if (filters.kind === 'income') where.push('t.is_income = 1');
+  if (filters.from) { where.push('t.date >= @from'); params.from = filters.from; }
+  if (filters.to) { where.push('t.date <= @to'); params.to = filters.to; }
+  if (filters.project) { where.push("json_extract(t.metadata, '$.project') = @project"); params.project = filters.project; }
+  if (filters.tag) {
+    where.push("t.metadata IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(t.metadata, '$.tags') WHERE value = @tag)");
+    params.tag = filters.tag;
+  }
+  return { clause: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+// Normaliza metadata: remove vazios e devolve null se não houver conteúdo útil
+function normalizeMetadata(metadata: TransactionMetadata | null): TransactionMetadata | null {
+  if (!metadata) return null;
+  const tags = Array.isArray(metadata.tags)
+    ? Array.from(new Set(metadata.tags.map((t) => String(t).trim()).filter(Boolean)))
+    : [];
+  const project = typeof metadata.project === 'string' ? metadata.project.trim() : '';
+  const clean: TransactionMetadata = {};
+  if (tags.length) clean.tags = tags;
+  if (project) clean.project = project;
+  return clean.tags || clean.project ? clean : null;
+}
+
+// Converte a coluna metadata (texto JSON) num objeto para o renderer
+function withParsedMetadata(row: Record<string, unknown>): Record<string, unknown> {
+  let metadata: TransactionMetadata | null = null;
+  if (typeof row.metadata === 'string' && row.metadata) {
+    try { metadata = JSON.parse(row.metadata); } catch { metadata = null; }
+  }
+  return { ...row, metadata };
 }
 
 function timestampForFile() {

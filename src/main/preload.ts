@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   listTransactions: (filters: TxFilters) => ipcRenderer.invoke('tx:list', filters),
   setTxCategory: (id: number, categoryId: number | null) => ipcRenderer.invoke('tx:setCategory', id, categoryId),
+  setTxMetadata: (id: number, metadata: unknown) => ipcRenderer.invoke('tx:setMetadata', id, metadata),
+  txMetaFacets: () => ipcRenderer.invoke('tx:metaFacets'),
   deleteTx: (id: number) => ipcRenderer.invoke('tx:delete', id),
   summary: (from?: string, to?: string) => ipcRenderer.invoke('stats:summary', from, to),
   monthly: () => ipcRenderer.invoke('stats:monthly'),

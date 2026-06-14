@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fmtDate, fmtMoney } from '../api';
 import { useAppStore } from '../store';
-import type { Category, Transaction } from '../../shared/types';
+import type { Category, Transaction, TransactionMetadata } from '../../shared/types';
 
 const PAGE_SIZE = 100;
 
@@ -20,26 +20,35 @@ export default function Transactions() {
   const [kind, setKind] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [facets, setFacets] = useState<{ tags: string[]; projects: string[] }>({ tags: [], projects: [] });
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const [page, setPage] = useState(0);
 
   useEffect(() => { api.listCategories().then(setCats); }, [refreshKey]);
+  useEffect(() => { api.txMetaFacets().then(setFacets); }, [refreshKey]);
+
+  const filters = {
+    search: search || undefined,
+    categoryId: catFilter ? Number(catFilter) : undefined,
+    kind: (kind || undefined) as 'expense' | 'income' | undefined,
+    from: from || undefined,
+    to: to || undefined,
+    tag: tagFilter || undefined,
+    project: projectFilter || undefined,
+  };
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api.listTransactions({
-        search: search || undefined,
-        categoryId: catFilter ? Number(catFilter) : undefined,
-        kind: (kind || undefined) as 'expense' | 'income' | undefined,
-        from: from || undefined,
-        to: to || undefined,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      }).then((r) => { setRows(r.rows); setTotal(r.total); setSum(r.sum); });
+      api.listTransactions({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+        .then((r) => { setRows(r.rows); setTotal(r.total); setSum(r.sum); });
     }, 200);
     return () => clearTimeout(t);
-  }, [search, catFilter, kind, from, to, page, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, catFilter, kind, from, to, tagFilter, projectFilter, page, refreshKey]);
 
-  useEffect(() => { setPage(0); }, [search, catFilter, kind, from, to]);
+  useEffect(() => { setPage(0); }, [search, catFilter, kind, from, to, tagFilter, projectFilter]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -48,6 +57,13 @@ export default function Transactions() {
     setRows((rs) => rs.map((r) => r.id === id
       ? { ...r, category_id: value ? Number(value) : null, category_name: cats.find((c) => c.id === Number(value))?.name ?? null }
       : r));
+  };
+
+  const saveMetadata = async (id: number, metadata: TransactionMetadata | null) => {
+    await api.setTxMetadata(id, metadata);
+    setRows((rs) => rs.map((r) => r.id === id ? { ...r, metadata } : r));
+    setEditing(null);
+    api.txMetaFacets().then(setFacets);
   };
 
   return (
@@ -59,13 +75,7 @@ export default function Transactions() {
             {total} resultados · total <strong style={{ color: sum >= 0 ? '#34d399' : '#f87171' }}>{fmtMoney(sum)}</strong>
           </span>
           <button className="btn ghost" title="Exporta as transações com os filtros atuais para CSV (abre no Excel)" onClick={async () => {
-            const r = await api.exportCsv({
-              search: search || undefined,
-              categoryId: catFilter ? Number(catFilter) : undefined,
-              kind: (kind || undefined) as 'expense' | 'income' | undefined,
-              from: from || undefined,
-              to: to || undefined,
-            });
+            const r = await api.exportCsv(filters);
             if (r) window.alert(`${r.count} transações exportadas para:\n${r.path}`);
           }}>📤 Exportar CSV</button>
         </div>
@@ -82,6 +92,19 @@ export default function Transactions() {
             <option value="">Todas as categorias</option>
             {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          {/* Filtros opcionais: só aparecem quando existem tags/projetos */}
+          {facets.tags.length > 0 && (
+            <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} title="Filtrar por tag">
+              <option value="">Todas as tags</option>
+              {facets.tags.map((t) => <option key={t} value={t}>🏷 {t}</option>)}
+            </select>
+          )}
+          {facets.projects.length > 0 && (
+            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} title="Filtrar por projeto">
+              <option value="">Todos os projetos</option>
+              {facets.projects.map((p) => <option key={p} value={p}>📁 {p}</option>)}
+            </select>
+          )}
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
@@ -98,7 +121,15 @@ export default function Transactions() {
                 {rows.map((t) => (
                   <tr key={t.id}>
                     <td>{fmtDate(t.date)}</td>
-                    <td title={t.description}>{t.description}</td>
+                    <td title={t.description}>
+                      {t.description}
+                      {(t.metadata?.tags?.length || t.metadata?.project) && (
+                        <div className="tag-chips">
+                          {t.metadata?.project && <span className="chip project">📁 {t.metadata.project}</span>}
+                          {t.metadata?.tags?.map((tag) => <span key={tag} className="chip">{tag}</span>)}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <select value={t.category_id ?? ''} onChange={(e) => changeCat(t.id, e.target.value)} style={{ maxWidth: 170 }}>
                         <option value="">— Sem categoria —</option>
@@ -106,7 +137,8 @@ export default function Transactions() {
                       </select>
                     </td>
                     <td className={`amount ${t.amount >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(t.amount, t.currency)}</td>
-                    <td>
+                    <td className="row-actions">
+                      <button className="btn ghost icon" title="Tags e projeto" onClick={() => setEditing(t)}>🏷</button>
                       <button className="btn danger" title="Apagar" onClick={async () => {
                         await api.deleteTx(t.id);
                         setRows((rs) => rs.filter((r) => r.id !== t.id));
@@ -128,6 +160,97 @@ export default function Transactions() {
           </div>
         )}
       </div>
+
+      {editing && (
+        <MetaEditor
+          tx={editing}
+          suggestions={facets.tags}
+          onClose={() => setEditing(null)}
+          onSave={(meta) => saveMetadata(editing.id, meta)}
+        />
+      )}
     </>
+  );
+}
+
+// Editor discreto de tags + projeto de uma transação.
+function MetaEditor({
+  tx,
+  suggestions,
+  onClose,
+  onSave,
+}: {
+  tx: Transaction;
+  suggestions: string[];
+  onClose: () => void;
+  onSave: (meta: TransactionMetadata | null) => void;
+}) {
+  const [tags, setTags] = useState<string[]>(tx.metadata?.tags ?? []);
+  const [project, setProject] = useState(tx.metadata?.project ?? '');
+  const [input, setInput] = useState('');
+
+  const addTag = (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    setTags((cur) => (cur.includes(value) ? cur : [...cur, value]));
+    setInput('');
+  };
+
+  const save = () => {
+    const tagsClean = tags.map((t) => t.trim()).filter(Boolean);
+    const projectClean = project.trim();
+    const meta: TransactionMetadata = {};
+    if (tagsClean.length) meta.tags = tagsClean;
+    if (projectClean) meta.project = projectClean;
+    onSave(meta.tags || meta.project ? meta : null);
+  };
+
+  const free = suggestions.filter((s) => !tags.includes(s));
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Organizar transação</h2>
+        <div className="modal-desc muted" title={tx.description}>{tx.description}</div>
+
+        <label className="modal-field">
+          <span>Tags</span>
+          <div className="tag-input">
+            {tags.map((tag) => (
+              <span key={tag} className="chip removable" onClick={() => setTags((cur) => cur.filter((t) => t !== tag))}>
+                {tag} ✕
+              </span>
+            ))}
+            <input
+              type="text"
+              value={input}
+              placeholder="freelance, cliente A…"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(input); }
+                else if (e.key === 'Backspace' && !input && tags.length) setTags((cur) => cur.slice(0, -1));
+              }}
+            />
+          </div>
+        </label>
+        {free.length > 0 && (
+          <div className="tag-suggest">
+            {free.slice(0, 8).map((s) => (
+              <button key={s} type="button" className="chip suggest" onClick={() => addTag(s)}>+ {s}</button>
+            ))}
+          </div>
+        )}
+
+        <label className="modal-field">
+          <span>Projeto</span>
+          <input type="text" value={project} placeholder="ex: Side project" onChange={(e) => setProject(e.target.value)} />
+        </label>
+
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn" onClick={save}>Guardar</button>
+        </div>
+      </div>
+    </div>
   );
 }

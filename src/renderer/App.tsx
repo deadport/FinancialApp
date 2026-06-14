@@ -33,6 +33,7 @@ export default function App() {
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   useEffect(() => {
     api.getAppState().then((state) => setOnboardingCompleted(state.onboardingCompleted));
@@ -128,6 +129,9 @@ export default function App() {
         }}>
           <span>⇪</span> Importar bundle
         </button>
+        <button className="nav-item" title="Lembrete mensal para importar extratos" onClick={() => setReminderOpen(true)}>
+          <span>🔔</span> Lembrete
+        </button>
         <button className="nav-item" title="Procura atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>
           <span>↻</span> Atualizações
         </button>
@@ -170,6 +174,47 @@ export default function App() {
           </div>
         </div>
       )}
+      {reminderOpen && <ReminderModal onClose={() => setReminderOpen(false)} />}
+    </div>
+  );
+}
+
+// Configuração do lembrete mensal (notificação local para importar extratos).
+function ReminderModal({ onClose }: { onClose: () => void }) {
+  const [enabled, setEnabled] = useState(false);
+  const [day, setDay] = useState(1);
+
+  useEffect(() => {
+    api.getPreference('reminder', { enabled: false, day: 1 }).then((cfg) => {
+      setEnabled(!!cfg.enabled);
+      setDay(Math.min(Math.max(cfg.day || 1, 1), 28));
+    });
+  }, []);
+
+  const save = async () => {
+    await api.setPreference('reminder', { enabled, day });
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Lembrete mensal</h2>
+        <div className="modal-desc muted">Recebe uma notificação para importar os teus extratos.</div>
+        <label className="modal-checkrow">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <span>Ativar lembrete</span>
+        </label>
+        <label className="modal-field">
+          <span>Dia do mês</span>
+          <input type="number" min={1} max={28} value={day} disabled={!enabled}
+            onChange={(e) => setDay(Math.min(Math.max(Number(e.target.value) || 1, 1), 28))} />
+        </label>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn" onClick={save}>Guardar</button>
+        </div>
+      </div>
     </div>
   );
 }

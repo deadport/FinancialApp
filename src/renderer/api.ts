@@ -1,6 +1,6 @@
 import type {
   Category, CategoryRule, CategoryStat, ImportProgress, ImportRecord,
-  MonthlyStat, RuleDirection, Summary, Transaction, TxFilters, UncategorizedGroup,
+  MonthlyStat, RuleDirection, Summary, Transaction, TransactionMetadata, TxFilters, UncategorizedGroup,
   UpdateStatus,
 } from '../shared/types';
 import type { CategoryTemplate } from '../shared/defaultConfig';
@@ -31,6 +31,8 @@ export interface Api {
   savingsMonthly(): Promise<{ month: string; net: number }[]>;
   biggestExpenses(): Promise<{ date: string; description: string; total: number }[]>;
   setTxCategory(id: number, categoryId: number | null): Promise<boolean>;
+  setTxMetadata(id: number, metadata: TransactionMetadata | null): Promise<boolean>;
+  txMetaFacets(): Promise<{ tags: string[]; projects: string[] }>;
   deleteTx(id: number): Promise<boolean>;
   summary(from?: string, to?: string): Promise<Summary>;
   monthly(): Promise<MonthlyStat[]>;

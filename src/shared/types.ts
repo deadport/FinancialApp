@@ -1,3 +1,9 @@
+// Camada opcional de organização avançada. Ausente/null para quem não a usa.
+export interface TransactionMetadata {
+  tags?: string[];
+  project?: string;
+}
+
 export interface Transaction {
   id: number;
   date: string;
@@ -10,6 +16,7 @@ export interface Transaction {
   is_income: number;
   is_subscription: number;
   imported_at: string;
+  metadata?: TransactionMetadata | null;
 }
 
 export interface Category {
@@ -56,6 +63,8 @@ export interface TxFilters {
   kind?: 'expense' | 'income';
   from?: string;
   to?: string;
+  tag?: string;
+  project?: string;
   limit?: number;
   offset?: number;
 }
