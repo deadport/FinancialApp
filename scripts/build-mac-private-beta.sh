@@ -22,12 +22,14 @@ echo "Building ${APP_NAME} ${VERSION} private macOS beta (${BUILDER_ARCH})..."
 
 npm run build
 
-CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir "--${BUILDER_ARCH}" --publish never
+FINANCIALAPP_DISABLE_UPDATES=1 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir "--${BUILDER_ARCH}" --publish never
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "App bundle not found at ${APP_PATH}" >&2
   exit 1
 fi
+
+touch "$APP_PATH/Contents/Resources/private-beta"
 
 echo "Removing local extended attributes..."
 xattr -cr "$APP_PATH" || true

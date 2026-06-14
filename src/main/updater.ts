@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createRequire } from 'module';
+import fs from 'fs';
+import path from 'path';
 
 type UpdateStatus =
   | { state: 'idle'; message: string }
@@ -22,9 +24,39 @@ interface AutoUpdaterLike {
 let autoUpdater: AutoUpdaterLike | null = null;
 let status: UpdateStatus = { state: 'idle', message: 'Atualizações prontas.' };
 let registered = false;
+let updatesDisabled = false;
+
+function updatesDisabledReason(): string | null {
+  if (updatesDisabled) return status.message;
+  if (process.env.FINANCIALAPP_DISABLE_UPDATES === '1') {
+    return 'Atualizações desativadas nesta build beta privada.';
+  }
+  if (app.isPackaged) {
+    const markerPath = path.join(process.resourcesPath, 'private-beta');
+    if (fs.existsSync(markerPath)) {
+      return 'Atualizações desativadas nesta build beta privada.';
+    }
+    const updateConfigPath = path.join(process.resourcesPath, 'app-update.yml');
+    if (!fs.existsSync(updateConfigPath)) {
+      return 'Atualizações indisponíveis nesta build.';
+    }
+  }
+  return null;
+}
+
+function disableUpdates(message: string) {
+  updatesDisabled = true;
+  status = { state: 'disabled', message };
+}
 
 function loadUpdater(): AutoUpdaterLike | null {
   if (autoUpdater) return autoUpdater;
+
+  const disabledReason = updatesDisabledReason();
+  if (disabledReason) {
+    disableUpdates(disabledReason);
+    return null;
+  }
 
   try {
     const require = createRequire(__filename);
@@ -67,6 +99,12 @@ export function registerUpdaterIpc(getWindow: () => BrowserWindow | null) {
 }
 
 export async function configureAutoUpdates(win: BrowserWindow | null) {
+  const disabledReason = updatesDisabledReason();
+  if (disabledReason) {
+    disableUpdates(disabledReason);
+    return;
+  }
+
   const updater = loadUpdater();
   if (!updater) return;
 
