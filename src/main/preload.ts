@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('api', {
   biggestExpenses: () => ipcRenderer.invoke('stats:biggestExpenses'),
   exportCsv: (filters: TxFilters) => ipcRenderer.invoke('tx:exportCsv', filters),
   backupDb: () => ipcRenderer.invoke('backup:db'),
+  restoreDb: () => ipcRenderer.invoke('backup:restore'),
   setCategoryExcluded: (id: number, excluded: boolean) => ipcRenderer.invoke('categories:setExcluded', id, excluded),
   listImports: () => ipcRenderer.invoke('imports:list'),
   deleteImport: (id: number) => ipcRenderer.invoke('imports:delete', id),

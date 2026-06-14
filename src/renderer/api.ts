@@ -22,6 +22,7 @@ export interface Api {
   listTransactions(filters: TxFilters): Promise<{ rows: Transaction[]; total: number; sum: number }>;
   exportCsv(filters: TxFilters): Promise<{ path: string; count: number } | null>;
   backupDb(): Promise<string | null>;
+  restoreDb(): Promise<{ path: string } | null>;
   savingsMonthly(): Promise<{ month: string; net: number }[]>;
   biggestExpenses(): Promise<{ date: string; description: string; total: number }[]>;
   setTxCategory(id: number, categoryId: number | null): Promise<boolean>;

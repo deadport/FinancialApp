@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import Database from 'better-sqlite3';
 import {
   completeFirstRun,
   getAppState,
@@ -52,6 +53,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   initDb();
+  createInternalBackup('startup');
 
   // Ícone próprio na Dock (em vez do ícone genérico do Electron)
   const iconPath = path.join(__dirname, '../assets/icon.png');
@@ -198,6 +200,31 @@ function registerIpc() {
     if (res.canceled || !res.filePath) return null;
     fs.copyFileSync(path.join(app.getPath('userData'), 'financialapp.db'), res.filePath);
     return res.filePath;
+  });
+
+  ipcMain.handle('backup:restore', async () => {
+    if (!win) return null;
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Restaurar backup da base de dados',
+      filters: [{ name: 'Base de dados', extensions: ['db'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+
+    const backupPath = res.filePaths[0];
+    const dbPath = path.join(app.getPath('userData'), 'financialapp.db');
+    validateBackupFile(backupPath);
+
+    const currentDb = getDb();
+    currentDb.pragma('wal_checkpoint(TRUNCATE)');
+    createInternalBackup('before-restore');
+    currentDb.close();
+
+    fs.copyFileSync(backupPath, dbPath);
+    initDb();
+    createInternalBackup('after-restore');
+
+    return { path: backupPath };
   });
 
   ipcMain.handle('tx:setCategory', (_e, id: number, categoryId: number | null) => {
@@ -472,4 +499,49 @@ function registerIpc() {
   ipcMain.handle('imports:list', () => {
     return getDb().prepare('SELECT * FROM imports ORDER BY id DESC LIMIT 30').all();
   });
+}
+
+function timestampForFile() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function createInternalBackup(label: string) {
+  const dbPath = path.join(app.getPath('userData'), 'financialapp.db');
+  if (!fs.existsSync(dbPath)) return null;
+
+  const db = getDb();
+  db.pragma('wal_checkpoint(TRUNCATE)');
+
+  const dir = path.join(app.getPath('userData'), 'backups');
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, `financialapp-${label}-${timestampForFile()}.db`);
+  fs.copyFileSync(dbPath, dest);
+  rotateInternalBackups(dir, 12);
+  return dest;
+}
+
+function rotateInternalBackups(dir: string, keep: number) {
+  const files = fs.readdirSync(dir)
+    .filter((name) => name.endsWith('.db'))
+    .map((name) => ({ name, path: path.join(dir, name), mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  for (const file of files.slice(keep)) {
+    fs.unlinkSync(file.path);
+  }
+}
+
+function validateBackupFile(filePath: string) {
+  const candidate = new Database(filePath, { readonly: true, fileMustExist: true });
+  try {
+    const tables = candidate.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    const names = new Set(tables.map((table) => table.name));
+    for (const required of ['categories', 'transactions', 'imports', 'category_rules']) {
+      if (!names.has(required)) {
+        throw new Error(`Backup inválido: tabela "${required}" não encontrada.`);
+      }
+    }
+  } finally {
+    candidate.close();
+  }
 }

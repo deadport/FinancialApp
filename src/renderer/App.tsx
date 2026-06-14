@@ -26,6 +26,7 @@ export default function App() {
   const page = useAppStore((s) => s.page);
   const setPage = useAppStore((s) => s.setPage);
   const refreshKey = useAppStore((s) => s.refreshKey);
+  const bumpRefresh = useAppStore((s) => s.bumpRefresh);
   const [uncatCount, setUncatCount] = useState(0);
   const [backupMsg, setBackupMsg] = useState('');
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
@@ -91,6 +92,19 @@ export default function App() {
           if (p) setTimeout(() => setBackupMsg(''), 4000);
         }}>
           <span>💾</span> {backupMsg || 'Backup'}
+        </button>
+        <button className="nav-item" title="Restaura um backup completo da base de dados" onClick={async () => {
+          const ok = window.confirm('Restaurar um backup vai substituir a base de dados atual. A app cria primeiro uma cópia de segurança interna. Continuar?');
+          if (!ok) return;
+          const restored = await api.restoreDb();
+          if (restored) {
+            setPage('dashboard');
+            bumpRefresh();
+            window.alert('Backup restaurado. A aplicação vai recarregar para aplicar os dados.');
+            window.location.reload();
+          }
+        }}>
+          <span>↩</span> Restaurar
         </button>
         <button className="nav-item" title="Procura atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>
           <span>↻</span> Atualizações
