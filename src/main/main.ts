@@ -154,8 +154,8 @@ function registerIpc() {
     return res.filePaths.length;
   });
 
-  ipcMain.handle('import:file', async (_e, fileName: string, data: ArrayBuffer) => {
-    await importFile(fileName, Buffer.from(data), sendProgress);
+  ipcMain.handle('import:file', async (_e, fileName: string, data: ArrayBuffer, project?: string) => {
+    await importFile(fileName, Buffer.from(data), sendProgress, project);
     return true;
   });
 
@@ -193,6 +193,52 @@ function registerIpc() {
       WHERE p IS NOT NULL AND p != '' ORDER BY p
     `).all() as { p: string }[]).map((r) => r.p).filter(Boolean);
     return { tags, projects };
+  });
+
+  // Lista de projetos com agregados (para a aba Projetos)
+  ipcMain.handle('project:list', () => {
+    return getDb().prepare(`
+      SELECT json_extract(t.metadata, '$.project') AS name,
+        COUNT(*) AS n,
+        COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS income,
+        COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount END), 0) AS expenses
+      FROM transactions t
+      WHERE name IS NOT NULL AND name != ''
+      GROUP BY name ORDER BY n DESC, name
+    `).all();
+  });
+
+  // Detalhe de um projeto: série mensal (receitas/despesas) + repartição por categoria
+  ipcMain.handle('project:detail', (_e, name: string) => {
+    const db = getDb();
+    const monthly = db.prepare(`
+      SELECT substr(t.date, 1, 7) AS month,
+        COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS income,
+        COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount END), 0) AS expenses
+      FROM transactions t
+      WHERE json_extract(t.metadata, '$.project') = @name
+      GROUP BY month ORDER BY month
+    `).all({ name });
+    const byCategory = db.prepare(`
+      SELECT COALESCE(c.name, 'Sem categoria') AS name, COALESCE(c.color, '#a3a3a3') AS color,
+        COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount END), 0) AS total
+      FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+      WHERE json_extract(t.metadata, '$.project') = @name
+      GROUP BY c.id HAVING total > 0 ORDER BY total DESC
+    `).all({ name });
+    return { monthly, byCategory };
+  });
+
+  // Renomeia um projeto em todas as transações que o usam
+  ipcMain.handle('project:rename', (_e, oldName: string, newName: string) => {
+    const next = String(newName ?? '').trim();
+    if (!next) return { updated: 0 };
+    const res = getDb().prepare(`
+      UPDATE transactions
+      SET metadata = json_set(COALESCE(metadata, '{}'), '$.project', @next)
+      WHERE json_extract(metadata, '$.project') = @old
+    `).run({ next, old: oldName });
+    return { updated: res.changes };
   });
 
   ipcMain.handle('tx:exportCsv', async (_e, filters: TxFilters = {}) => {

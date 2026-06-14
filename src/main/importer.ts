@@ -125,8 +125,10 @@ function findHeaderRow(matrix: Matrix): { headerIdx: number; headers: string[] }
   return null;
 }
 
-export async function importFile(fileName: string, buffer: Buffer, onProgress: ProgressFn): Promise<void> {
+export async function importFile(fileName: string, buffer: Buffer, onProgress: ProgressFn, project?: string): Promise<void> {
   const db = getDb();
+  // Extrato dedicado a um projeto: todas as linhas inseridas ficam com metadata.project
+  const projectMeta = project && project.trim() ? JSON.stringify({ project: project.trim() }) : null;
   try {
     onProgress({ percent: 5, message: `A ler ${fileName}…` });
     const matrix = readMatrix(fileName, buffer);
@@ -162,8 +164,8 @@ export async function importFile(fileName: string, buffer: Buffer, onProgress: P
     const subCatId = (db.prepare("SELECT id FROM categories WHERE name = 'Subscrições'").get() as { id: number } | undefined)?.id;
 
     const insert = db.prepare(`
-      INSERT OR IGNORE INTO transactions (date, description, amount, currency, category_id, source_file, dedup_hash, is_income, is_subscription)
-      VALUES (@date, @description, @amount, @currency, @category_id, @source_file, @dedup_hash, @is_income, @is_subscription)
+      INSERT OR IGNORE INTO transactions (date, description, amount, currency, category_id, source_file, dedup_hash, is_income, is_subscription, metadata)
+      VALUES (@date, @description, @amount, @currency, @category_id, @source_file, @dedup_hash, @is_income, @is_subscription, @metadata)
     `);
 
     let inserted = 0, skipped = 0, errors = 0;
@@ -201,6 +203,7 @@ export async function importFile(fileName: string, buffer: Buffer, onProgress: P
           date, description, amount, currency, category_id,
           source_file: fileName, dedup_hash,
           is_income: amount > 0 ? 1 : 0, is_subscription,
+          metadata: projectMeta,
         });
         if (res.changes > 0) inserted++; else skipped++;
 

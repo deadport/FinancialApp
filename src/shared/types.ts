@@ -76,6 +76,18 @@ export interface Summary {
   count: number;
 }
 
+export interface ProjectStat {
+  name: string;
+  n: number;
+  income: number;
+  expenses: number;
+}
+
+export interface ProjectDetail {
+  monthly: { month: string; income: number; expenses: number }[];
+  byCategory: { name: string; color: string; total: number }[];
+}
+
 export interface MonthlyStat {
   month: string;
   income: number;

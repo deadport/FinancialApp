@@ -1,7 +1,7 @@
 import type {
   Category, CategoryRule, CategoryStat, ImportProgress, ImportRecord,
-  MonthlyStat, RuleDirection, Summary, Transaction, TransactionMetadata, TxFilters, UncategorizedGroup,
-  UpdateStatus,
+  MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
+  TxFilters, UncategorizedGroup, UpdateStatus,
 } from '../shared/types';
 import type { CategoryTemplate } from '../shared/defaultConfig';
 
@@ -20,7 +20,7 @@ export interface Api {
   installUpdate(): Promise<boolean>;
   onUpdateStatus(cb: (p: UpdateStatus) => void): () => void;
   pickAndImport(): Promise<string | null>;
-  importFile(fileName: string, data: ArrayBuffer): Promise<boolean>;
+  importFile(fileName: string, data: ArrayBuffer, project?: string): Promise<boolean>;
   onImportProgress(cb: (p: ImportProgress) => void): () => void;
   listTransactions(filters: TxFilters): Promise<{ rows: Transaction[]; total: number; sum: number }>;
   exportCsv(filters: TxFilters): Promise<{ path: string; count: number } | null>;
@@ -33,6 +33,9 @@ export interface Api {
   setTxCategory(id: number, categoryId: number | null): Promise<boolean>;
   setTxMetadata(id: number, metadata: TransactionMetadata | null): Promise<boolean>;
   txMetaFacets(): Promise<{ tags: string[]; projects: string[] }>;
+  listProjects(): Promise<ProjectStat[]>;
+  projectDetail(name: string): Promise<ProjectDetail>;
+  renameProject(oldName: string, newName: string): Promise<{ updated: number }>;
   deleteTx(id: number): Promise<boolean>;
   summary(from?: string, to?: string): Promise<Summary>;
   monthly(): Promise<MonthlyStat[]>;

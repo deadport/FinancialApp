@@ -137,13 +137,15 @@ export default function Transactions() {
                       </select>
                     </td>
                     <td className={`amount ${t.amount >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(t.amount, t.currency)}</td>
-                    <td className="row-actions">
-                      <button className="btn ghost icon" title="Tags e projeto" onClick={() => setEditing(t)}>🏷</button>
-                      <button className="btn danger" title="Apagar" onClick={async () => {
-                        await api.deleteTx(t.id);
-                        setRows((rs) => rs.filter((r) => r.id !== t.id));
-                        setTotal((n) => n - 1);
-                      }}>✕</button>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn icon-flat" title="Tags e projeto" onClick={() => setEditing(t)}>🏷</button>
+                        <button className="btn danger" title="Apagar" onClick={async () => {
+                          await api.deleteTx(t.id);
+                          setRows((rs) => rs.filter((r) => r.id !== t.id));
+                          setTotal((n) => n - 1);
+                        }}>✕</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -165,6 +167,7 @@ export default function Transactions() {
         <MetaEditor
           tx={editing}
           suggestions={facets.tags}
+          projects={facets.projects}
           onClose={() => setEditing(null)}
           onSave={(meta) => saveMetadata(editing.id, meta)}
         />
@@ -177,11 +180,13 @@ export default function Transactions() {
 function MetaEditor({
   tx,
   suggestions,
+  projects,
   onClose,
   onSave,
 }: {
   tx: Transaction;
   suggestions: string[];
+  projects: string[];
   onClose: () => void;
   onSave: (meta: TransactionMetadata | null) => void;
 }) {
@@ -243,8 +248,24 @@ function MetaEditor({
 
         <label className="modal-field">
           <span>Projeto</span>
-          <input type="text" value={project} placeholder="ex: Side project" onChange={(e) => setProject(e.target.value)} />
+          <input
+            type="text"
+            list="project-options"
+            value={project}
+            placeholder="Escolhe um existente ou escreve um novo"
+            onChange={(e) => setProject(e.target.value)}
+          />
+          <datalist id="project-options">
+            {projects.map((p) => <option key={p} value={p} />)}
+          </datalist>
         </label>
+        {projects.length > 0 && (
+          <div className="tag-suggest">
+            {projects.filter((p) => p !== project).slice(0, 8).map((p) => (
+              <button key={p} type="button" className="chip project suggest" onClick={() => setProject(p)}>📁 {p}</button>
+            ))}
+          </div>
+        )}
 
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose}>Cancelar</button>

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2
+
+### Novidades
+- **Aba Projetos dedicada:** seletor compacto de projetos (pills) com KPIs de negócio — **Receitas, Despesas, Lucro e Margem** — e gráficos próprios de **Lucro por mês** e **Lucro acumulado**, repartição de custos por categoria e a lista de transações do projeto.
+- **Importar para um projeto:** na aba Importar podes atribuir um extrato inteiro a um projeto (ex: extrato só do negócio) — todas as transações ficam logo associadas.
+- **Editar nome do projeto:** renomear um projeto atualiza-o em todas as transações de uma só vez.
+- **Editar tags/projeto de uma transação:** atribui tags e projeto pelo botão 🏷, escolhendo projetos já existentes sem reescrever.
+
+### Correções
+- Coluna de ações da tabela de Transações deixou de aparecer desalinhada/"colada" (o `<td>` já não usa `display:flex` diretamente).
+
 ## 1.1.1
 
 ### Novidades

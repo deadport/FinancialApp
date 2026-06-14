@@ -9,10 +9,13 @@ export default function ImportPage() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [history, setHistory] = useState<ImportRecord[]>([]);
   const [removeMsg, setRemoveMsg] = useState('');
+  const [project, setProject] = useState('');
+  const [projectOptions, setProjectOptions] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const loadHistory = () => { api.listImports().then(setHistory); };
   useEffect(loadHistory, []);
+  useEffect(() => { api.txMetaFacets().then((f) => setProjectOptions(f.projects)); }, []);
 
   useEffect(() => {
     const off = api.onImportProgress((p) => {
@@ -28,11 +31,13 @@ export default function ImportPage() {
       setProgress({ percent: 100, done: true, message: 'Formato não suportado.', error: 'Usa ficheiros .csv, .tsv, .xlsx ou .xls' });
       return;
     }
+    const targetProject = project.trim() || undefined;
     for (let i = 0; i < valid.length; i++) {
       setProgress({ percent: 0, message: `Ficheiro ${i + 1} de ${valid.length}: ${valid[i].name}…` });
       const buf = await valid[i].arrayBuffer();
-      await api.importFile(valid[i].name, buf);
+      await api.importFile(valid[i].name, buf, targetProject);
     }
+    if (targetProject) api.txMetaFacets().then((f) => setProjectOptions(f.projects));
   };
 
   return (
@@ -41,6 +46,26 @@ export default function ImportPage() {
         <h1>Importar extratos</h1>
       </div>
       <div className="page-body">
+        <div className="panel import-project">
+          <label className="import-project-field">
+            <span>Atribuir a um projeto <span className="muted">(opcional)</span></span>
+            <input
+              type="text"
+              list="import-project-options"
+              value={project}
+              placeholder="ex: extrato só do negócio — deixa vazio para importação normal"
+              onChange={(e) => setProject(e.target.value)}
+            />
+            <datalist id="import-project-options">
+              {projectOptions.map((p) => <option key={p} value={p} />)}
+            </datalist>
+          </label>
+          {project.trim() && (
+            <div className="import-project-hint">
+              📁 Todas as transações deste extrato vão ser atribuídas ao projeto <strong>{project.trim()}</strong>.
+            </div>
+          )}
+        </div>
         <div
           className={`dropzone ${over ? 'over' : ''}`}
           onClick={() => fileInput.current?.click()}

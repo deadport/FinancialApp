@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('update:status', handler);
   },
   pickAndImport: () => ipcRenderer.invoke('import:pick'),
-  importFile: (fileName: string, data: ArrayBuffer) => ipcRenderer.invoke('import:file', fileName, data),
+  importFile: (fileName: string, data: ArrayBuffer, project?: string) => ipcRenderer.invoke('import:file', fileName, data, project),
   onImportProgress: (cb: (p: ImportProgress) => void) => {
     const handler = (_e: unknown, p: ImportProgress) => cb(p);
     ipcRenderer.on('import:progress', handler);
@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('api', {
   setTxCategory: (id: number, categoryId: number | null) => ipcRenderer.invoke('tx:setCategory', id, categoryId),
   setTxMetadata: (id: number, metadata: unknown) => ipcRenderer.invoke('tx:setMetadata', id, metadata),
   txMetaFacets: () => ipcRenderer.invoke('tx:metaFacets'),
+  listProjects: () => ipcRenderer.invoke('project:list'),
+  projectDetail: (name: string) => ipcRenderer.invoke('project:detail', name),
+  renameProject: (oldName: string, newName: string) => ipcRenderer.invoke('project:rename', oldName, newName),
   deleteTx: (id: number) => ipcRenderer.invoke('tx:delete', id),
   summary: (from?: string, to?: string) => ipcRenderer.invoke('stats:summary', from, to),
   monthly: () => ipcRenderer.invoke('stats:monthly'),

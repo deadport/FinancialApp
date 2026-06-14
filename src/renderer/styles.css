@@ -487,8 +487,45 @@ input:focus, select:focus { border-color: var(--accent); }
 .chip.removable:hover { background: rgba(248, 113, 113, .15); border-color: rgba(248, 113, 113, .4); color: #fca5a5; }
 .chip.suggest { background: transparent; cursor: pointer; }
 .chip.suggest:hover { background: rgba(16, 185, 129, .12); }
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
-.btn.icon { padding: 6px 9px; }
+.row-actions { display: flex; gap: 2px; justify-content: flex-end; align-items: center; white-space: nowrap; }
+/* Botões de ação planos: fundem-se na linha, mesma altura, sem caixa elevada */
+.btn.icon-flat { background: transparent; border: none; padding: 4px 8px; font-size: 15px; line-height: 1; color: var(--text-dim); }
+.btn.icon-flat:hover { background: transparent; color: var(--accent-soft); }
+th, td { vertical-align: middle; }
+
+/* Aba Projetos — seletor compacto em pills */
+.project-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+}
+.project-pill:hover { background: var(--bg-card-hover); }
+.project-pill.active { border-color: rgba(52, 211, 153, .6); background: rgba(16, 185, 129, .12); }
+.pill-amount { font-variant-numeric: tabular-nums; }
+.pill-amount.pos { color: var(--green); }
+.pill-amount.neg { color: var(--red); }
+
+/* Importar para um projeto */
+.import-project { margin-bottom: 14px; }
+.import-project-field { display: block; }
+.import-project-field > span { display: block; color: var(--text-dim); font-size: 13px; margin-bottom: 6px; }
+.import-project-field input { width: 100%; }
+.import-project-hint { margin-top: 10px; font-size: 13px; color: var(--accent-soft); }
+
+.cat-bars { display: flex; flex-direction: column; gap: 10px; }
+.cat-bar-row { display: grid; grid-template-columns: 130px 1fr auto; align-items: center; gap: 10px; }
+.cat-bar-label { display: flex; align-items: center; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-bar-track { background: var(--bg); border-radius: 999px; height: 10px; overflow: hidden; }
+.cat-bar-fill { height: 100%; border-radius: 999px; }
+.cat-bar-value { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
 
 .tag-input {
   display: flex;

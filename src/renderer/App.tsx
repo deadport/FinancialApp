@@ -10,6 +10,7 @@ import Transactions from './pages/Transactions';
 import Uncategorized from './pages/Uncategorized';
 import Categories from './pages/Categories';
 import Subscriptions from './pages/Subscriptions';
+import Projects from './pages/Projects';
 import Onboarding from './pages/Onboarding';
 
 const NAV: { id: Page; label: string; icon: string }[] = [
@@ -20,6 +21,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'uncategorized', label: 'Por categorizar', icon: '🧩' },
   { id: 'categories', label: 'Categorias', icon: '🏷️' },
   { id: 'subscriptions', label: 'Subscrições', icon: '🔁' },
+  { id: 'projects', label: 'Projetos', icon: '📁' },
 ];
 
 export default function App() {
@@ -144,6 +146,7 @@ export default function App() {
         {page === 'uncategorized' && <Uncategorized />}
         {page === 'categories' && <Categories />}
         {page === 'subscriptions' && <Subscriptions />}
+        {page === 'projects' && <Projects />}
       </main>
       {showUpdatePopup && (
         <div className="update-popup" role="dialog" aria-live="polite">
