@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('api', {
   listProjects: () => ipcRenderer.invoke('project:list'),
   projectDetail: (name: string) => ipcRenderer.invoke('project:detail', name),
   renameProject: (oldName: string, newName: string) => ipcRenderer.invoke('project:rename', oldName, newName),
+  createProject: (name: string) => ipcRenderer.invoke('project:create', name),
+  deleteProject: (name: string) => ipcRenderer.invoke('project:delete', name),
   deleteTx: (id: number) => ipcRenderer.invoke('tx:delete', id),
   summary: (from?: string, to?: string) => ipcRenderer.invoke('stats:summary', from, to),
   monthly: () => ipcRenderer.invoke('stats:monthly'),

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3
+
+### Novidades
+- **Criar projeto direto na aba Projetos:** botão **+ Adicionar projeto** ao lado dos projetos. Já não é preciso passar por uma transação — cria-se o projeto e depois importa-se um extrato ou atribuem-se transações.
+- **Remover projeto:** botão 🗑 que desassocia o projeto das transações (mantendo-as) e o retira da lista.
+- Projetos criados ficam guardados mesmo sem transações ainda associadas, e aparecem em todos os seletores (importar, filtros, editor 🏷).
+
 ## 1.1.2
 
 ### Novidades

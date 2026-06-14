@@ -188,24 +188,53 @@ function registerIpc() {
       SELECT DISTINCT je.value AS v FROM transactions t, json_each(t.metadata, '$.tags') je
       WHERE t.metadata IS NOT NULL ORDER BY v
     `).all() as { v: string }[]).map((r) => r.v).filter(Boolean);
-    const projects = (db.prepare(`
+    const fromTx = (db.prepare(`
       SELECT DISTINCT json_extract(t.metadata, '$.project') AS p FROM transactions t
       WHERE p IS NOT NULL AND p != '' ORDER BY p
     `).all() as { p: string }[]).map((r) => r.p).filter(Boolean);
+    // Inclui também projetos criados sem transações ainda associadas
+    const projects = Array.from(new Set([...fromTx, ...getProjectRegistry()])).sort((a, b) => a.localeCompare(b));
     return { tags, projects };
   });
 
-  // Lista de projetos com agregados (para a aba Projetos)
+  // Lista de projetos com agregados (inclui projetos criados ainda sem transações)
   ipcMain.handle('project:list', () => {
-    return getDb().prepare(`
+    const rows = getDb().prepare(`
       SELECT json_extract(t.metadata, '$.project') AS name,
         COUNT(*) AS n,
         COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS income,
         COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount END), 0) AS expenses
       FROM transactions t
       WHERE name IS NOT NULL AND name != ''
-      GROUP BY name ORDER BY n DESC, name
-    `).all();
+      GROUP BY name
+    `).all() as { name: string; n: number; income: number; expenses: number }[];
+    const map = new Map(rows.map((r) => [r.name, r]));
+    for (const name of getProjectRegistry()) {
+      if (!map.has(name)) map.set(name, { name, n: 0, income: 0, expenses: 0 });
+    }
+    return Array.from(map.values()).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  });
+
+  // Cria um projeto vazio (fica no registo até ter transações)
+  ipcMain.handle('project:create', (_e, name: string) => {
+    const clean = String(name ?? '').trim();
+    if (!clean) return { created: false };
+    addToProjectRegistry(clean);
+    return { created: true, name: clean };
+  });
+
+  // Remove um projeto: tira-o do registo e desassocia-o das transações (mantém as transações e as tags)
+  ipcMain.handle('project:delete', (_e, name: string) => {
+    const res = getDb().prepare(`
+      UPDATE transactions
+      SET metadata = CASE
+        WHEN json_remove(metadata, '$.project') = '{}' THEN NULL
+        ELSE json_remove(metadata, '$.project')
+      END
+      WHERE json_extract(metadata, '$.project') = @name
+    `).run({ name });
+    setPreference('project_registry', getProjectRegistry().filter((n) => n !== name));
+    return { cleared: res.changes };
   });
 
   // Detalhe de um projeto: série mensal (receitas/despesas) + repartição por categoria
@@ -238,6 +267,7 @@ function registerIpc() {
       SET metadata = json_set(COALESCE(metadata, '{}'), '$.project', @next)
       WHERE json_extract(metadata, '$.project') = @old
     `).run({ next, old: oldName });
+    renameInProjectRegistry(oldName, next);
     return { updated: res.changes };
   });
 
@@ -690,6 +720,24 @@ function startReminderScheduler() {
   checkReminder();
   // Reavalia periodicamente enquanto a app está aberta (a cada 6 horas)
   setInterval(checkReminder, 6 * 60 * 60 * 1000);
+}
+
+// Registo de projetos: permite criar/manter projetos mesmo sem transações associadas.
+function getProjectRegistry(): string[] {
+  return getPreference<string[]>('project_registry', [])
+    .filter((s) => typeof s === 'string' && s.trim());
+}
+
+function addToProjectRegistry(name: string) {
+  const reg = getProjectRegistry();
+  if (!reg.includes(name)) setPreference('project_registry', [...reg, name]);
+}
+
+function renameInProjectRegistry(oldName: string, newName: string) {
+  const reg = getProjectRegistry();
+  if (!reg.includes(oldName) && reg.includes(newName)) return;
+  const next = reg.map((n) => (n === oldName ? newName : n));
+  setPreference('project_registry', Array.from(new Set(next)));
 }
 
 // Constrói a cláusula WHERE partilhada por tx:list e tx:exportCsv (inclui tags/projeto via JSON1)

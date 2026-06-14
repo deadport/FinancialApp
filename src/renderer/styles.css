@@ -509,6 +509,8 @@ th, td { vertical-align: middle; }
 }
 .project-pill:hover { background: var(--bg-card-hover); }
 .project-pill.active { border-color: rgba(52, 211, 153, .6); background: rgba(16, 185, 129, .12); }
+.project-pill.add { border-style: dashed; color: var(--text-dim); }
+.project-pill.add:hover { color: var(--accent-soft); border-color: rgba(52, 211, 153, .5); }
 .pill-amount { font-variant-numeric: tabular-nums; }
 .pill-amount.pos { color: var(--green); }
 .pill-amount.neg { color: var(--red); }

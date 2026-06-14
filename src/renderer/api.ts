@@ -36,6 +36,8 @@ export interface Api {
   listProjects(): Promise<ProjectStat[]>;
   projectDetail(name: string): Promise<ProjectDetail>;
   renameProject(oldName: string, newName: string): Promise<{ updated: number }>;
+  createProject(name: string): Promise<{ created: boolean; name?: string }>;
+  deleteProject(name: string): Promise<{ cleared: number }>;
   deleteTx(id: number): Promise<boolean>;
   summary(from?: string, to?: string): Promise<Summary>;
   monthly(): Promise<MonthlyStat[]>;

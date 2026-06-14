@@ -15,6 +15,7 @@ export default function Projects() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [rows, setRows] = useState<Transaction[]>([]);
   const [renaming, setRenaming] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     api.listProjects().then((ps) => {
@@ -42,20 +43,6 @@ export default function Projects() {
     });
   }, [detail]);
 
-  if (projects.length === 0) {
-    return (
-      <>
-        <div className="page-header"><h1>Projetos</h1></div>
-        <div className="page-body">
-          <div className="empty">
-            Ainda não tens projetos. Abre uma transação em <strong>Transações</strong>, clica em 🏷
-            e atribui um projeto — ele aparece aqui com lucro, margem e gráficos próprios.
-          </div>
-        </div>
-      </>
-    );
-  }
-
   const income = active?.income ?? 0;
   const expenses = active?.expenses ?? 0;
   const profit = income - expenses;
@@ -69,6 +56,17 @@ export default function Projects() {
           <span className="muted">{projects.length} projeto{projects.length === 1 ? '' : 's'}</span>
           {active && (
             <button className="btn ghost" title="Editar nome do projeto" onClick={() => setRenaming(true)}>✏️ Editar nome</button>
+          )}
+          {active && (
+            <button className="btn ghost" title="Remover projeto" onClick={async () => {
+              const msg = active.n > 0
+                ? `Remover o projeto "${active.name}"? As ${active.n} transações mantêm-se, mas deixam de estar associadas a este projeto.`
+                : `Remover o projeto "${active.name}"?`;
+              if (!window.confirm(msg)) return;
+              await api.deleteProject(active.name);
+              setSelected(null);
+              bumpRefresh();
+            }}>🗑 Remover</button>
           )}
         </div>
       </div>
@@ -87,7 +85,24 @@ export default function Projects() {
               </span>
             </button>
           ))}
+          <button className="project-pill add" onClick={() => setCreating(true)}>+ Adicionar projeto</button>
         </div>
+
+        {projects.length === 0 && (
+          <div className="empty">
+            Ainda não tens projetos. Clica em <strong>+ Adicionar projeto</strong> para criar um,
+            ou importa um extrato direto para um projeto na aba <strong>Importar</strong>.
+          </div>
+        )}
+
+        {active && active.n === 0 && (
+          <div className="panel" style={{ marginBottom: 16 }}>
+            <span className="muted">
+              📁 Projeto sem transações ainda. Importa um extrato para este projeto (aba <strong>Importar</strong>)
+              ou atribui transações com o botão 🏷 em <strong>Transações</strong>.
+            </span>
+          </div>
+        )}
 
         {active && (
           <>
@@ -198,13 +213,32 @@ export default function Projects() {
 
       {renaming && active && (
         <RenameModal
-          current={active.name}
-          existing={projects.map((p) => p.name)}
+          title="Editar nome do projeto"
+          desc="Atualiza o nome em todas as transações deste projeto."
+          initial={active.name}
+          existing={projects.map((p) => p.name).filter((n) => n !== active.name)}
           onClose={() => setRenaming(false)}
-          onRename={async (newName) => {
+          onSubmit={async (newName) => {
             await api.renameProject(active.name, newName);
             setRenaming(false);
             setSelected(newName);
+            bumpRefresh();
+          }}
+        />
+      )}
+
+      {creating && (
+        <RenameModal
+          title="Novo projeto"
+          desc="Cria um projeto. Depois importa um extrato para ele ou atribui transações com o botão 🏷."
+          initial=""
+          existing={projects.map((p) => p.name)}
+          submitLabel="Criar"
+          onClose={() => setCreating(false)}
+          onSubmit={async (name) => {
+            const res = await api.createProject(name);
+            setCreating(false);
+            if (res.created && res.name) setSelected(res.name);
             bumpRefresh();
           }}
         />
@@ -214,35 +248,41 @@ export default function Projects() {
 }
 
 function RenameModal({
-  current,
+  title,
+  desc,
+  initial,
   existing,
+  submitLabel = 'Guardar',
   onClose,
-  onRename,
+  onSubmit,
 }: {
-  current: string;
+  title: string;
+  desc: string;
+  initial: string;
   existing: string[];
+  submitLabel?: string;
   onClose: () => void;
-  onRename: (newName: string) => void;
+  onSubmit: (name: string) => void;
 }) {
-  const [name, setName] = useState(current);
+  const [name, setName] = useState(initial);
   const trimmed = name.trim();
-  const clash = trimmed !== current && existing.includes(trimmed);
-  const valid = trimmed.length > 0 && trimmed !== current && !clash;
+  const clash = existing.includes(trimmed);
+  const valid = trimmed.length > 0 && trimmed !== initial && !clash;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Editar nome do projeto</h2>
-        <div className="modal-desc muted">Atualiza o nome em todas as transações deste projeto.</div>
+        <h2>{title}</h2>
+        <div className="modal-desc muted">{desc}</div>
         <label className="modal-field">
           <span>Nome</span>
-          <input type="text" value={name} autoFocus onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && valid) onRename(trimmed); }} />
+          <input type="text" value={name} autoFocus placeholder="ex: Negócio Café" onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && valid) onSubmit(trimmed); }} />
         </label>
         {clash && <div className="import-msg error">Já existe um projeto com esse nome.</div>}
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn" disabled={!valid} onClick={() => onRename(trimmed)}>Guardar</button>
+          <button className="btn" disabled={!valid} onClick={() => onSubmit(trimmed)}>{submitLabel}</button>
         </div>
       </div>
     </div>
