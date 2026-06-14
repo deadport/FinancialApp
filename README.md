@@ -62,8 +62,29 @@ Para publicar uma nova versão:
 
 ```bash
 npm version patch
-git push origin main --tags
+git push origin HEAD --tags
+```
+
+Também existem atalhos:
+
+```bash
+npm run release:patch
+npm run release:minor
+npm run release:major
 ```
 
 O workflow `.github/workflows/release.yml` cria os instaladores e publica os ficheiros
 de update no GitHub Release correspondente à tag `v*`.
+
+### Assinatura macOS
+
+O `.dmg` pode ser criado localmente sem certificado, mas macOS mostra avisos fortes em apps
+não assinadas/notarizadas. Para distribuição pública, configura uma conta Apple Developer e
+disponibiliza estes segredos no GitHub Actions antes de publicar:
+
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+- certificado Developer ID Application em formato base64, se quiseres assinar no CI
+
+Sem estes dados, a build continua a funcionar para testes, mas não fica notarizada.
