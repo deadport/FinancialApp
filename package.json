@@ -2,6 +2,11 @@
   "name": "financialapp",
   "version": "1.0.0",
   "description": "App desktop local-first de análise financeira",
+  "author": "deadport",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deadport/FinancialApp.git"
+  },
   "main": "dist-electron/main.js",
   "private": true,
   "scripts": {
@@ -14,12 +19,15 @@
     "dist:win": "npm run build && electron-builder --win nsis --x64",
     "dist:win:arm64": "npm run build && electron-builder --win nsis --arm64",
     "pack:dir": "npm run build && electron-builder --dir",
+    "release:patch": "npm version patch && git push origin HEAD --tags",
+    "release:minor": "npm version minor && git push origin HEAD --tags",
+    "release:major": "npm version major && git push origin HEAD --tags",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps",
     "start": "electron ."
   },
   "build": {
-    "appId": "com.financialapp.desktop",
+    "appId": "com.deadport.financialapp",
     "productName": "FinancialApp",
     "directories": {
       "output": "release"
@@ -42,7 +50,9 @@
         "dmg"
       ],
       "icon": "assets/icon.icns",
-      "category": "public.app-category.finance"
+      "category": "public.app-category.finance",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -59,12 +69,14 @@
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://updates.example.com/financialapp/"
+        "provider": "github",
+        "owner": "deadport",
+        "repo": "FinancialApp"
       }
     ]
   },
