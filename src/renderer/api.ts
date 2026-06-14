@@ -9,6 +9,9 @@ export interface Api {
   getAppState(): Promise<{ onboardingCompleted: boolean; schemaVersion: number; userDataPath: string }>;
   listOnboardingCategories(): Promise<CategoryTemplate[]>;
   completeOnboarding(selectedCategoryNames: string[]): Promise<number>;
+  createOnboardingCategories(selectedCategoryNames: string[]): Promise<number>;
+  finishOnboarding(): Promise<boolean>;
+  onboardingSummary(): Promise<{ transactions: number; uncategorized: number; from: string | null; to: string | null; categories: number; rules: number }>;
   getPreference<T>(key: string, fallback: T): Promise<T>;
   setPreference(key: string, value: unknown): Promise<boolean>;
   getUpdateStatus(): Promise<UpdateStatus>;
@@ -23,6 +26,8 @@ export interface Api {
   exportCsv(filters: TxFilters): Promise<{ path: string; count: number } | null>;
   backupDb(): Promise<string | null>;
   restoreDb(): Promise<{ path: string } | null>;
+  exportBundle(): Promise<{ path: string; count: number } | null>;
+  importBundle(): Promise<{ path: string; count: number } | null>;
   savingsMonthly(): Promise<{ month: string; net: number }[]>;
   biggestExpenses(): Promise<{ date: string; description: string; total: number }[]>;
   setTxCategory(id: number, categoryId: number | null): Promise<boolean>;
@@ -59,7 +64,15 @@ declare global {
 
 export const api = window.api;
 
-export function fmtMoney(v: number, currency = 'EUR'): string {
+let activeCurrency = 'EUR';
+export function setActiveCurrency(currency: string) {
+  if (currency) activeCurrency = currency;
+}
+export function getActiveCurrency(): string {
+  return activeCurrency;
+}
+
+export function fmtMoney(v: number, currency = activeCurrency): string {
   return new Intl.NumberFormat('pt-PT', { style: 'currency', currency }).format(v);
 }
 

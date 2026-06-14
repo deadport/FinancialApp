@@ -151,7 +151,9 @@ export function getPreference<T>(key: string, fallback: T): T {
   }
 }
 
-export function completeFirstRun(selectedCategoryNames: string[]) {
+// Cria as categorias escolhidas + regras automáticas correspondentes, sem
+// marcar o onboarding como concluído (permite importar/categorizar antes do fim).
+export function createInitialCategories(selectedCategoryNames: string[]) {
   const selected = new Set(selectedCategoryNames.map((name) => name.trim()).filter(Boolean));
   const templates = DEFAULT_CATEGORY_CATALOG.filter((category) => selected.has(category.name));
   const insertCategory = db.prepare(`
@@ -185,11 +187,22 @@ export function completeFirstRun(selectedCategoryNames: string[]) {
         insertRule.run(rule.keyword, categoryId, rule.direction ?? 'any', rule.keyword, categoryId);
       }
     }
-    upsertSetting(ONBOARDING_COMPLETED_KEY, 'true');
   });
 
   run();
   return templates.length;
+}
+
+// Marca o onboarding como concluído.
+export function finishOnboarding() {
+  upsertSetting(ONBOARDING_COMPLETED_KEY, 'true');
+}
+
+// Compatibilidade: cria categorias e conclui de uma só vez.
+export function completeFirstRun(selectedCategoryNames: string[]) {
+  const count = createInitialCategories(selectedCategoryNames);
+  finishOnboarding();
+  return count;
 }
 
 function ensureFirstRunState() {

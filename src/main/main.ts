@@ -4,6 +4,8 @@ import fs from 'fs';
 import Database from 'better-sqlite3';
 import {
   completeFirstRun,
+  createInitialCategories,
+  finishOnboarding,
   getAppState,
   getDb,
   getDefaultCategoryCatalog,
@@ -105,6 +107,27 @@ function registerIpc() {
 
   ipcMain.handle('onboarding:complete', (_e, selectedCategoryNames: string[]) => {
     return completeFirstRun(selectedCategoryNames);
+  });
+
+  // Cria categorias + regras já a meio do onboarding (antes do import, para auto-categorizar)
+  ipcMain.handle('onboarding:createCategories', (_e, selectedCategoryNames: string[]) => {
+    return createInitialCategories(selectedCategoryNames);
+  });
+
+  // Marca o onboarding como concluído (passo final)
+  ipcMain.handle('onboarding:finish', () => {
+    finishOnboarding();
+    return true;
+  });
+
+  // Resumo para o ecrã final do onboarding
+  ipcMain.handle('onboarding:summary', () => {
+    const db = getDb();
+    const txn = db.prepare('SELECT COUNT(*) AS c, MIN(date) AS minD, MAX(date) AS maxD FROM transactions').get() as { c: number; minD: string | null; maxD: string | null };
+    const uncat = (db.prepare('SELECT COUNT(*) AS c FROM transactions WHERE category_id IS NULL').get() as { c: number }).c;
+    const categories = (db.prepare('SELECT COUNT(*) AS c FROM categories').get() as { c: number }).c;
+    const rules = (db.prepare('SELECT COUNT(*) AS c FROM category_rules').get() as { c: number }).c;
+    return { transactions: txn.c, uncategorized: uncat, from: txn.minD, to: txn.maxD, categories, rules };
   });
 
   ipcMain.handle('prefs:get', (_e, key: string, fallback: unknown) => {
@@ -225,6 +248,96 @@ function registerIpc() {
     createInternalBackup('after-restore');
 
     return { path: backupPath };
+  });
+
+  // Bundle portável (JSON): categorias, regras, transações, definições e layout dos gráficos
+  ipcMain.handle('bundle:export', async () => {
+    if (!win) return null;
+    const db = getDb();
+    const dump = (table: string) => db.prepare(`SELECT * FROM ${table}`).all();
+    const bundle = {
+      app: 'FinancialApp',
+      kind: 'bundle',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      schemaVersion: getAppState().schemaVersion,
+      tables: {
+        categories: dump('categories'),
+        category_rules: dump('category_rules'),
+        transactions: dump('transactions'),
+        imports: dump('imports'),
+        dismissed_subscriptions: dump('dismissed_subscriptions'),
+        app_settings: dump('app_settings'),
+        user_preferences: dump('user_preferences'),
+      },
+    };
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Exportar backup completo (JSON)',
+      defaultPath: `financialapp-bundle-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'Backup FinancialApp', extensions: ['json'] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    fs.writeFileSync(res.filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+    return { path: res.filePath, count: bundle.tables.transactions.length };
+  });
+
+  ipcMain.handle('bundle:import', async () => {
+    if (!win) return null;
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Importar backup completo (JSON)',
+      filters: [{ name: 'Backup FinancialApp', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+
+    const raw = fs.readFileSync(res.filePaths[0], 'utf-8');
+    let bundle: any;
+    try {
+      bundle = JSON.parse(raw);
+    } catch {
+      throw new Error('Ficheiro inválido: não é um JSON válido.');
+    }
+    if (!bundle || bundle.app !== 'FinancialApp' || bundle.kind !== 'bundle' || !bundle.tables) {
+      throw new Error('Ficheiro inválido: não é um backup FinancialApp.');
+    }
+
+    const db = getDb();
+    // Cópia interna antes de substituir, por segurança
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    createInternalBackup('before-bundle-import');
+
+    // Substituir tudo: ordem respeita as foreign keys
+    const order = [
+      'transactions',
+      'category_rules',
+      'dismissed_subscriptions',
+      'imports',
+      'app_settings',
+      'user_preferences',
+      'categories',
+    ];
+    const replaceAll = db.transaction(() => {
+      db.pragma('foreign_keys = OFF');
+      for (const table of order) db.prepare(`DELETE FROM ${table}`).run();
+      // Reinserir (categorias primeiro para satisfazer FKs)
+      for (const table of [...order].reverse()) {
+        const rows = bundle.tables[table];
+        if (!Array.isArray(rows) || rows.length === 0) continue;
+        const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+        const insertCols = Object.keys(rows[0]).filter((k) => cols.includes(k));
+        if (insertCols.length === 0) continue;
+        const stmt = db.prepare(
+          `INSERT INTO ${table} (${insertCols.join(', ')}) VALUES (${insertCols.map(() => '?').join(', ')})`,
+        );
+        for (const row of rows) stmt.run(insertCols.map((c) => row[c]));
+      }
+      db.pragma('foreign_keys = ON');
+    });
+    replaceAll();
+    createInternalBackup('after-bundle-import');
+
+    const count = Array.isArray(bundle.tables.transactions) ? bundle.tables.transactions.length : 0;
+    return { path: res.filePaths[0], count };
   });
 
   ipcMain.handle('tx:setCategory', (_e, id: number, categoryId: number | null) => {

@@ -1,12 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
 import iconUrl from '../../../assets/icon.png';
-import { api } from '../api';
+import { api, fmtMoney, setActiveCurrency } from '../api';
 import { useAppStore } from '../store';
 import type { CategoryTemplate } from '../../shared/defaultConfig';
-import type { ImportProgress } from '../../shared/types';
+import type { Category, ImportProgress, UncategorizedGroup } from '../../shared/types';
 
 interface OnboardingProps {
   onDone: () => void;
+}
+
+const TOTAL_STEPS = 5;
+
+const CURRENCIES = [
+  { code: 'EUR', label: 'Euro (€)' },
+  { code: 'USD', label: 'Dólar US ($)' },
+  { code: 'GBP', label: 'Libra (£)' },
+  { code: 'BRL', label: 'Real (R$)' },
+];
+
+const INCOME_NAMES = new Set(['Salário', 'Mesada', 'Investimentos']);
+
+// Agrupa as categorias do catálogo por finalidade, para o passo de seleção.
+function groupOf(cat: CategoryTemplate): string {
+  if (cat.excluded) return 'Transferências e poupança';
+  if (INCOME_NAMES.has(cat.name)) return 'Rendimento';
+  if (cat.isFixed) return 'Despesas fixas';
+  return 'Dia a dia';
+}
+
+const GROUP_ORDER = ['Dia a dia', 'Despesas fixas', 'Rendimento', 'Transferências e poupança'];
+
+// Remove prefixos genéricos de banco para sugerir a palavra-chave útil.
+function suggestKeyword(desc: string): string {
+  return desc
+    .replace(/^COMPRA\s+\d+\s+/i, '')
+    .replace(/^TRF\.?\s*(MB\s*WAY\s*)?(P\/?O?|DE)\s*/i, '')
+    .replace(/^(PAG(AMENTO)?|DD|DEB\.?\s*DIR\.?)\s*(DE\s*SERVICOS\s*)?/i, '')
+    .replace(/\s+CONTACTLESS\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase() || desc.trim().toLowerCase();
+}
+
+interface Summary {
+  transactions: number;
+  uncategorized: number;
+  from: string | null;
+  to: string | null;
+  categories: number;
+  rules: number;
 }
 
 export default function Onboarding({ onDone }: OnboardingProps) {
@@ -14,25 +56,48 @@ export default function Onboarding({ onDone }: OnboardingProps) {
   const [step, setStep] = useState(1);
   const [categories, setCategories] = useState<CategoryTemplate[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [currency, setCurrency] = useState('EUR');
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [over, setOver] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const primaryBtn = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     api.listOnboardingCategories().then((items) => {
       setCategories(items);
       setSelected(new Set(items.map((item) => item.name)));
     });
+    api.getPreference('currency', 'EUR').then(setCurrency);
   }, []);
 
   useEffect(() => {
     const off = api.onImportProgress((p) => {
       setProgress(p);
-      if (p.done) bumpRefresh();
+      if (p.done) {
+        setImporting(false);
+        bumpRefresh();
+      }
     });
     return off;
   }, [bumpRefresh]);
+
+  // Foco automático no botão primário + Esc para voltar.
+  useEffect(() => {
+    primaryBtn.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && step > 1) setStep((s) => s - 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step]);
+
+  const grouped = GROUP_ORDER
+    .map((g) => ({ group: g, items: categories.filter((c) => groupOf(c) === g) }))
+    .filter((entry) => entry.items.length > 0);
 
   const toggleCategory = (name: string) => {
     setSelected((current) => {
@@ -43,23 +108,66 @@ export default function Onboarding({ onDone }: OnboardingProps) {
     });
   };
 
+  const chooseCurrency = (code: string) => {
+    setCurrency(code);
+    setActiveCurrency(code);
+    api.setPreference('currency', code);
+  };
+
   const sendFiles = async (files: FileList | File[]) => {
     const valid = Array.from(files).filter((f) => /\.(csv|tsv|xlsx|xls)$/i.test(f.name));
     if (valid.length === 0) {
       setProgress({ percent: 100, done: true, message: 'Formato não suportado.', error: 'Usa ficheiros .csv, .tsv, .xlsx ou .xls' });
       return;
     }
+    setImporting(true);
     for (let i = 0; i < valid.length; i++) {
       setProgress({ percent: 0, message: `Ficheiro ${i + 1} de ${valid.length}: ${valid[i].name}...` });
       const buf = await valid[i].arrayBuffer();
       await api.importFile(valid[i].name, buf);
     }
+    setImporting(false);
+  };
+
+  // Cria as categorias escolhidas (idempotente) antes de importar/categorizar.
+  const ensureCategories = async () => {
+    setCreating(true);
+    await api.createOnboardingCategories(Array.from(selected));
+    setCreating(false);
+  };
+
+  const goToImport = async () => {
+    await ensureCategories();
+    setStep(3);
+  };
+
+  const goToAssist = async () => {
+    setStep(4);
   };
 
   const finish = async () => {
     setSaving(true);
-    await api.completeOnboarding(Array.from(selected));
     await api.applyRules();
+    await api.finishOnboarding();
+    bumpRefresh();
+    onDone();
+  };
+
+  const restoreBundle = async () => {
+    const ok = window.confirm('Importar um backup vai substituir quaisquer dados atuais e abrir a app. Continuar?');
+    if (!ok) return;
+    const res = await api.importBundle();
+    if (res) {
+      await api.finishOnboarding();
+      bumpRefresh();
+      window.location.reload();
+    }
+  };
+
+  const skipSetup = async () => {
+    setSaving(true);
+    await api.createOnboardingCategories(Array.from(selected));
+    await api.finishOnboarding();
     bumpRefresh();
     onDone();
   };
@@ -74,7 +182,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
             <div className="muted">Configuração inicial</div>
           </div>
           <div className="step-indicator">
-            {[1, 2, 3, 4].map((n) => (
+            {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((n) => (
               <span key={n} className={n === step ? 'active' : n < step ? 'done' : ''} />
             ))}
           </div>
@@ -87,8 +195,19 @@ export default function Onboarding({ onDone }: OnboardingProps) {
               Importa extratos, escolhe categorias, acompanha despesas e ajusta a análise ao teu ritmo.
               Os dados ficam guardados neste computador.
             </p>
+            <label className="onboarding-field">
+              <span>Moeda principal</span>
+              <select value={currency} onChange={(e) => chooseCurrency(e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              </select>
+            </label>
             <div className="onboarding-actions">
-              <button className="btn" onClick={() => setStep(2)}>Começar</button>
+              <button className="btn" ref={primaryBtn} onClick={() => setStep(2)}>Começar</button>
+              <button className="btn ghost" disabled={saving} onClick={skipSetup}>Saltar configuração</button>
+            </div>
+            <div className="onboarding-restore">
+              Já usavas a app noutro computador?{' '}
+              <button type="button" className="linklike" onClick={restoreBundle}>Restaurar backup</button>
             </div>
           </div>
         )}
@@ -97,24 +216,42 @@ export default function Onboarding({ onDone }: OnboardingProps) {
           <div className="onboarding-content">
             <h1>Escolhe as categorias iniciais.</h1>
             <p>Podes ativar só as que fazem sentido agora e criar mais categorias mais tarde.</p>
-            <div className="category-picker">
-              {categories.map((category) => (
-                <button
-                  type="button"
-                  key={category.name}
-                  className={`category-option ${selected.has(category.name) ? 'selected' : ''}`}
-                  onClick={() => toggleCategory(category.name)}
-                >
-                  <span className="color-dot" style={{ background: category.color }} />
-                  <span>{category.name}</span>
-                  <span className="checkmark">{selected.has(category.name) ? '✓' : ''}</span>
-                </button>
-              ))}
+            <div className="onboarding-subtoolbar">
+              <span className="muted">{selected.size} de {categories.length} selecionadas</span>
+              <div>
+                <button type="button" className="linklike" onClick={() => setSelected(new Set(categories.map((c) => c.name)))}>Selecionar todas</button>
+                {' · '}
+                <button type="button" className="linklike" onClick={() => setSelected(new Set())}>Limpar</button>
+              </div>
+            </div>
+            {grouped.map(({ group, items }) => (
+              <div key={group} className="category-group">
+                <div className="category-group-title">{group}</div>
+                <div className="category-picker">
+                  {items.map((category) => (
+                    <button
+                      type="button"
+                      key={category.name}
+                      className={`category-option ${selected.has(category.name) ? 'selected' : ''}`}
+                      onClick={() => toggleCategory(category.name)}
+                    >
+                      <span className="color-dot" style={{ background: category.color }} />
+                      <span>{category.name}</span>
+                      {category.isFixed && <span className="cat-flag" title="Despesa fixa">🔒</span>}
+                      {category.excluded && <span className="cat-flag" title="Não conta nas estatísticas">∅</span>}
+                      <span className="checkmark">{selected.has(category.name) ? '✓' : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="onboarding-legend muted">
+              🔒 despesa fixa (renda, ginásio…) · ∅ não conta como despesa/receita (transferências, poupança)
             </div>
             <div className="onboarding-actions">
               <button className="btn ghost" onClick={() => setStep(1)}>Voltar</button>
-              <button className="btn" disabled={selected.size === 0} onClick={() => setStep(3)}>
-                Continuar
+              <button className="btn" ref={primaryBtn} disabled={selected.size === 0 || creating} onClick={goToImport}>
+                {creating ? 'A preparar...' : 'Continuar'}
               </button>
             </div>
           </div>
@@ -162,30 +299,130 @@ export default function Onboarding({ onDone }: OnboardingProps) {
             )}
             <div className="onboarding-actions">
               <button className="btn ghost" onClick={() => setStep(2)}>Voltar</button>
-              <button className="btn" onClick={() => setStep(4)}>Continuar</button>
+              <button className="btn" ref={primaryBtn} disabled={importing} onClick={goToAssist}>
+                {importing ? 'A importar...' : 'Continuar'}
+              </button>
             </div>
           </div>
         )}
 
         {step === 4 && (
+          <AssistStep
+            onBack={() => setStep(3)}
+            onContinue={async () => {
+              const s = await api.onboardingSummary();
+              setSummary(s);
+              setStep(5);
+            }}
+            onRefresh={bumpRefresh}
+            primaryRef={primaryBtn}
+          />
+        )}
+
+        {step === 5 && (
           <div className="onboarding-content">
             <h1>Tudo pronto.</h1>
-            <p>
-              A app vai criar apenas as categorias selecionadas e abrir o dashboard.
-              Podes alterar categorias, importar mais extratos e personalizar gráficos quando quiseres.
-            </p>
+            <p>Podes alterar categorias, importar mais extratos e personalizar gráficos quando quiseres.</p>
             <div className="onboarding-summary">
-              <div><strong>{selected.size}</strong><span>Categorias selecionadas</span></div>
-              <div><strong>{progress?.done && !progress.error ? 'Sim' : 'Opcional'}</strong><span>Importação inicial</span></div>
+              <div><strong>{summary?.categories ?? selected.size}</strong><span>Categorias</span></div>
+              <div><strong>{summary?.transactions ?? 0}</strong><span>Movimentos</span></div>
+              <div><strong>{summary?.uncategorized ?? 0}</strong><span>Por categorizar</span></div>
             </div>
+            {summary && summary.transactions > 0 && summary.from && summary.to && (
+              <p className="muted onboarding-period">
+                Período {summary.from} a {summary.to} · {summary.rules} regras automáticas ativas
+              </p>
+            )}
+            <p className="muted">Moeda: {fmtMoney(1234.5, currency)}</p>
             <div className="onboarding-actions">
-              <button className="btn ghost" onClick={() => setStep(3)}>Voltar</button>
-              <button className="btn" disabled={saving} onClick={finish}>
+              <button className="btn ghost" onClick={() => setStep(4)}>Voltar</button>
+              <button className="btn" ref={primaryBtn} disabled={saving} onClick={finish}>
                 {saving ? 'A finalizar...' : 'Abrir aplicação'}
               </button>
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Passo de categorização assistida: atribui as descrições mais frequentes
+// que não bateram em nenhuma regra, criando uma regra para cada.
+function AssistStep({
+  onBack,
+  onContinue,
+  onRefresh,
+  primaryRef,
+}: {
+  onBack: () => void;
+  onContinue: () => void;
+  onRefresh: () => void;
+  primaryRef: React.RefObject<HTMLButtonElement>;
+}) {
+  const [groups, setGroups] = useState<UncategorizedGroup[]>([]);
+  const [cats, setCats] = useState<Category[]>([]);
+  const [done, setDone] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    Promise.all([api.listUncategorized(), api.listCategories()]).then(([gs, cs]) => {
+      setGroups(gs);
+      setCats(cs);
+      setLoading(false);
+    });
+  };
+
+  useEffect(load, []);
+
+  const top = groups.slice(0, 6);
+
+  const assign = async (g: UncategorizedGroup, categoryId: number) => {
+    const keyword = suggestKeyword(g.description);
+    const direction = g.max_amount < 0 ? 'expense' : g.min_amount > 0 ? 'income' : 'any';
+    await api.addRule(keyword, categoryId, direction);
+    await api.applyRules();
+    setDone((d) => new Set(d).add(g.description));
+    onRefresh();
+    load();
+  };
+
+  return (
+    <div className="onboarding-content">
+      <h1>Categoriza o que ficou por encaixar.</h1>
+      <p>
+        Estas são as descrições mais frequentes que nenhuma regra apanhou. Escolhe a categoria
+        para cada uma — fica guardada como regra e aplica-se também a importações futuras.
+      </p>
+      {loading ? (
+        <div className="muted">A analisar...</div>
+      ) : top.length === 0 ? (
+        <div className="empty">🎉 Está tudo categorizado!</div>
+      ) : (
+        <div className="assist-list">
+          {top.map((g) => (
+            <div key={g.description} className={`assist-row ${done.has(g.description) ? 'assigned' : ''}`}>
+              <div className="assist-info">
+                <div className="assist-desc" title={g.description}>{g.description}</div>
+                <div className="muted">{g.n}× · {fmtMoney(g.total)}</div>
+              </div>
+              <select
+                defaultValue=""
+                disabled={done.has(g.description)}
+                onChange={(e) => e.target.value && assign(g, Number(e.target.value))}
+              >
+                <option value="">{done.has(g.description) ? '✓ Atribuído' : 'Categoria…'}</option>
+                {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="onboarding-actions">
+        <button className="btn ghost" onClick={onBack}>Voltar</button>
+        <button className="btn" ref={primaryRef} onClick={onContinue}>
+          {top.length === 0 ? 'Continuar' : 'Continuar (podes acabar depois)'}
+        </button>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import iconUrl from '../../assets/icon.png';
 import { useAppStore, Page } from './store';
-import { api } from './api';
+import { api, setActiveCurrency } from './api';
 import type { UpdateStatus } from '../shared/types';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
@@ -29,12 +29,14 @@ export default function App() {
   const bumpRefresh = useAppStore((s) => s.bumpRefresh);
   const [uncatCount, setUncatCount] = useState(0);
   const [backupMsg, setBackupMsg] = useState('');
+  const [bundleMsg, setBundleMsg] = useState('');
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
 
   useEffect(() => {
     api.getAppState().then((state) => setOnboardingCompleted(state.onboardingCompleted));
+    api.getPreference('currency', 'EUR').then((c) => setActiveCurrency(c));
   }, []);
 
   useEffect(() => {
@@ -105,6 +107,26 @@ export default function App() {
           }
         }}>
           <span>↩</span> Restaurar
+        </button>
+        <button className="nav-item" title="Exporta um backup portável em JSON (categorias, regras, transações, definições e layout dos gráficos)" onClick={async () => {
+          const res = await api.exportBundle();
+          setBundleMsg(res ? `✓ Bundle (${res.count} mov.)` : '');
+          if (res) setTimeout(() => setBundleMsg(''), 4000);
+        }}>
+          <span>📦</span> {bundleMsg || 'Exportar bundle'}
+        </button>
+        <button className="nav-item" title="Importa um backup portável em JSON e substitui todos os dados atuais" onClick={async () => {
+          const ok = window.confirm('Importar um bundle vai SUBSTITUIR todos os dados atuais (transações, categorias, regras, definições e layout). A app cria primeiro uma cópia de segurança interna. Continuar?');
+          if (!ok) return;
+          const res = await api.importBundle();
+          if (res) {
+            setPage('dashboard');
+            bumpRefresh();
+            window.alert(`Bundle importado (${res.count} movimentos). A aplicação vai recarregar.`);
+            window.location.reload();
+          }
+        }}>
+          <span>⇪</span> Importar bundle
         </button>
         <button className="nav-item" title="Procura atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>
           <span>↻</span> Atualizações

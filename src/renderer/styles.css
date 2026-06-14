@@ -392,7 +392,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .onboarding-progress { margin-bottom: 0; }
 .onboarding-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 6px;
 }
@@ -409,6 +409,64 @@ input:focus, select:focus { border-color: var(--accent); }
   margin-bottom: 4px;
 }
 .onboarding-summary span { color: var(--text-dim); }
+.onboarding-period { margin-top: 10px; }
+
+/* Onboarding: moeda, restauro, grupos, legenda */
+.onboarding-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+.onboarding-field span { color: var(--text-dim); }
+.onboarding-field select { min-width: 180px; }
+.onboarding-restore {
+  margin-top: 16px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-soft);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.onboarding-subtoolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.category-group { margin-bottom: 10px; }
+.category-group-title {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin: 6px 0;
+}
+.cat-flag { font-size: 12px; opacity: .85; }
+.onboarding-legend { font-size: 12px; margin: 4px 0 6px; }
+
+/* Onboarding: categorização assistida */
+.assist-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.assist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #121a15;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.assist-row.assigned { border-color: rgba(52, 211, 153, .5); background: rgba(16, 185, 129, .08); }
+.assist-info { flex: 1; min-width: 0; }
+.assist-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assist-row select { min-width: 150px; }
 
 /* Dashboard personalizável */
 .charts-row.customizable { align-items: stretch; }
