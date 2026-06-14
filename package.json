@@ -50,9 +50,7 @@
         "dmg"
       ],
       "icon": "assets/icon.icns",
-      "category": "public.app-category.finance",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "category": "public.app-category.finance"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
