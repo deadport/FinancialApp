@@ -24,6 +24,13 @@ export const DEFAULT_CATEGORY_CATALOG: CategoryTemplate[] = [
   { name: 'Educação', color: '#f97316' },
   { name: 'Transferências', color: '#64748b', excluded: true },
   { name: 'Poupança', color: '#84cc16', excluded: true },
+  { name: 'Eletrónicos', color: '#38bdf8' },
+  { name: 'Roupa', color: '#fb7185' },
+  { name: 'Gaming', color: '#a78bfa' },
+  { name: 'Barbeiro', color: '#d97706', isFixed: true },
+  { name: 'Prendas', color: '#f472b6' },
+  { name: 'Musica', color: '#22d3ee' },
+  { name: 'Mesada', color: '#84cc16' },
   { name: 'Outros', color: '#a3a3a3' },
 ];
 
@@ -63,11 +70,21 @@ export const DEFAULT_RULE_CATALOG: CategoryRuleTemplate[] = [
   { keyword: 'transferência', category: 'Transferências' },
   { keyword: 'mb way', category: 'Transferências' },
   { keyword: 'amazon', category: 'Compras' },
-  { keyword: 'fnac', category: 'Compras' },
-  { keyword: 'worten', category: 'Compras' },
+  { keyword: 'fnac', category: 'Eletrónicos' },
+  { keyword: 'worten', category: 'Eletrónicos' },
+  { keyword: 'microsoft', category: 'Eletrónicos' },
+  { keyword: 'swappie', category: 'Eletrónicos' },
   { keyword: 'zara', category: 'Compras' },
+  { keyword: 'pullandbear', category: 'Roupa' },
   { keyword: 'cinema', category: 'Lazer' },
-  { keyword: 'steam', category: 'Lazer' },
+  { keyword: 'steam', category: 'Gaming' },
+  { keyword: 'g2a', category: 'Gaming' },
+  { keyword: 'skinport', category: 'Gaming' },
+  { keyword: 'tebex', category: 'Gaming' },
+  { keyword: 'nexusmods', category: 'Gaming' },
+  { keyword: 'apple.com/bill', category: 'Musica' },
+  { keyword: 'paco instrumentos', category: 'Musica' },
+  { keyword: 'revolut', category: 'Poupança' },
 ];
 
 export const DEFAULT_DASHBOARD_WIDGET_ORDER = [
