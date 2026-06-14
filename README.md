@@ -48,8 +48,8 @@ Os dados do utilizador não ficam dentro da app instalada. Ficam em:
 Isto permite atualizar a aplicação sem apagar extratos, categorias, preferências ou ordem dos gráficos.
 
 ## Atualizações
-A app está preparada para `electron-updater`. O endpoint de publicação está em `package.json`
-em `build.publish.url` e deve ser substituído pelo URL real dos releases antes de publicar.
+A app está preparada para `electron-updater` e usa GitHub Releases do repositório
+`deadport/FinancialApp`.
 
 Fluxo previsto:
 
@@ -57,3 +57,13 @@ Fluxo previsto:
 2. Se existir uma nova versão, mostra um popup.
 3. O utilizador pode descarregar e reiniciar para instalar.
 4. A atualização troca apenas os ficheiros da aplicação; a base de dados do utilizador permanece em `userData`.
+
+Para publicar uma nova versão:
+
+```bash
+npm version patch
+git push origin main --tags
+```
+
+O workflow `.github/workflows/release.yml` cria os instaladores e publica os ficheiros
+de update no GitHub Release correspondente à tag `v*`.
