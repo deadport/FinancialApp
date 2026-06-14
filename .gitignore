@@ -1,0 +1,30 @@
+.DS_Store
+node_modules/
+
+# Build output and local app wrappers
+dist/
+dist-electron/
+release/
+out/
+build/
+FinancialApp.app/
+
+# Local launch/dev files
+.claude/
+scripts/launch.sh
+
+# User data and private statement files
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.tsv
+*.xls
+*.xlsx
+!exemplos/
+!exemplos/*.csv
+!exemplos/*.xlsx
+
+# Logs and temporary files
+*.log
+*.tmp
