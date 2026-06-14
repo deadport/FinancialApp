@@ -41,6 +41,7 @@ export default function Analysis() {
   const [incomeSplit, setIncomeSplit] = useState<{ name: string; color: string; total: number }[]>([]);
   const [savingsM, setSavingsM] = useState<{ month: string; net: number }[]>([]);
   const [biggest, setBiggest] = useState<{ date: string; description: string; total: number }[]>([]);
+  const [balanceSeries, setBalanceSeries] = useState<{ month: string; saldo: number }[]>([]);
   const [prefs, setPrefs] = useState<DashboardWidgetPreference>({
     order: DEFAULT_DASHBOARD_WIDGET_ORDER,
     visible: DEFAULT_DASHBOARD_WIDGET_ORDER,
@@ -57,6 +58,7 @@ export default function Analysis() {
     api.incomeSplit().then(setIncomeSplit);
     api.savingsMonthly().then(setSavingsM);
     api.biggestExpenses().then(setBiggest);
+    api.balanceSeries().then(setBalanceSeries);
   }, [refreshKey]);
 
   useEffect(() => {
@@ -94,15 +96,6 @@ export default function Analysis() {
     nextOrder.splice(targetIndex, 0, sourceId);
     savePrefs({ ...prefs, order: nextOrder });
   };
-
-  // Saldo acumulado mês a mês
-  const cumulative = useMemo(() => {
-    let acc = 0;
-    return monthly.map((m) => {
-      acc += m.income - m.expenses;
-      return { month: m.month, saldo: Math.round(acc * 100) / 100 };
-    });
-  }, [monthly]);
 
   // Taxa de poupança: % do rendimento que sobra em cada mês
   const savings = useMemo(() => monthly
@@ -158,15 +151,15 @@ export default function Analysis() {
   const avgSavings = savings.length
     ? Math.round(savings.reduce((a, s) => a + s.taxa, 0) / savings.length * 10) / 10
     : null;
-  const trend = cumulative.length >= 2
-    ? cumulative[cumulative.length - 1].saldo - cumulative[0].saldo
+  const trend = balanceSeries.length >= 2
+    ? balanceSeries[balanceSeries.length - 1].saldo - balanceSeries[0].saldo
     : null;
   const topWeekday = weekdayData.reduce((a, b) => (b.total > a.total ? b : a), weekdayData[0]);
 
   const widgetBodies: Record<string, JSX.Element> = {
     balance_evolution: (
       <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={cumulative} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <AreaChart data={balanceSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <defs>
             <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#34d399" stopOpacity={0.45} />

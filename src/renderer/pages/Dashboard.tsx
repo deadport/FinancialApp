@@ -50,10 +50,11 @@ export default function Dashboard() {
             <div className="kpi-value red">{summary ? fmtMoney(summary.expenses) : '—'}</div>
           </div>
           <div className="kpi-card">
-            <div className="kpi-title">Saldo</div>
+            <div className="kpi-title">Saldo atual</div>
             <div className={`kpi-value ${summary && summary.balance >= 0 ? 'green' : 'red'}`}>
               {summary ? fmtMoney(summary.balance) : '—'}
             </div>
+            {summary?.balanceAdjusted && <div className="kpi-hint">Alinhado com o banco</div>}
           </div>
           <div className="kpi-card">
             <div className="kpi-title">Transações</div>

@@ -9,7 +9,7 @@ interface OnboardingProps {
   onDone: () => void;
 }
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 const CURRENCIES = [
   { code: 'EUR', label: 'Euro (€)' },
@@ -63,6 +63,8 @@ export default function Onboarding({ onDone }: OnboardingProps) {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [initialBalance, setInitialBalanceValue] = useState('');
+  const [balanceError, setBalanceError] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const primaryBtn = useRef<HTMLButtonElement>(null);
 
@@ -312,7 +314,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
             onContinue={async () => {
               const s = await api.onboardingSummary();
               setSummary(s);
-              setStep(5);
+              setStep(s.transactions > 0 ? 5 : 6);
             }}
             onRefresh={bumpRefresh}
             primaryRef={primaryBtn}
@@ -320,6 +322,49 @@ export default function Onboarding({ onDone }: OnboardingProps) {
         )}
 
         {step === 5 && (
+          <div className="onboarding-content">
+            <h1>Alinha o saldo inicial.</h1>
+            <p>
+              Se os extratos não cobrem todo o histórico da conta, indica qual era aproximadamente
+              o saldo antes do primeiro movimento conhecido. A app usa isto só para mostrar o saldo atual correto.
+            </p>
+            {summary && summary.from && (
+              <div className="balance-current onboarding-balance-note">
+                <span>Primeiro movimento conhecido</span>
+                <strong>{summary.from}</strong>
+              </div>
+            )}
+            <label className="modal-field onboarding-balance-field">
+              <span>Saldo antes desse movimento</span>
+              <input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={initialBalance}
+                onChange={(e) => setInitialBalanceValue(e.target.value)}
+              />
+            </label>
+            {balanceError && <div className="import-msg error">{balanceError}</div>}
+            <div className="onboarding-actions">
+              <button className="btn ghost" onClick={() => setStep(4)}>Voltar</button>
+              <button className="btn ghost" onClick={() => setStep(6)}>Saltar</button>
+              <button className="btn" ref={primaryBtn} onClick={async () => {
+                const value = Number(initialBalance.replace(',', '.'));
+                if (!Number.isFinite(value)) {
+                  setBalanceError('Indica um saldo válido ou salta este passo.');
+                  return;
+                }
+                await api.setInitialBalance(value);
+                setStep(6);
+              }}>
+                Guardar saldo
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 6 && (
           <div className="onboarding-content">
             <h1>Tudo pronto.</h1>
             <p>Podes alterar categorias, importar mais extratos e personalizar gráficos quando quiseres.</p>
@@ -335,7 +380,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
             )}
             <p className="muted">Moeda: {fmtMoney(1234.5, currency)}</p>
             <div className="onboarding-actions">
-              <button className="btn ghost" onClick={() => setStep(4)}>Voltar</button>
+              <button className="btn ghost" onClick={() => setStep(summary && summary.transactions > 0 ? 5 : 4)}>Voltar</button>
               <button className="btn" ref={primaryBtn} disabled={saving} onClick={finish}>
                 {saving ? 'A finalizar...' : 'Abrir aplicação'}
               </button>

@@ -1,6 +1,6 @@
 import type {
   Category, CategoryRule, CategoryStat, ImportProgress, ImportRecord,
-  ManualTransactionInput, MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
+  BalanceState, ManualTransactionInput, MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
   TxFilters, UncategorizedGroup, UpdateStatus,
 } from '../shared/types';
 import type { CategoryTemplate } from '../shared/defaultConfig';
@@ -14,6 +14,11 @@ export interface Api {
   onboardingSummary(): Promise<{ transactions: number; uncategorized: number; from: string | null; to: string | null; categories: number; rules: number }>;
   getPreference<T>(key: string, fallback: T): Promise<T>;
   setPreference(key: string, value: unknown): Promise<boolean>;
+  getBalanceState(): Promise<BalanceState>;
+  alignBalance(realBalance: number, anchorDate: string): Promise<BalanceState>;
+  setInitialBalance(initialBalance: number): Promise<BalanceState>;
+  dismissBalancePrompt(): Promise<boolean>;
+  balanceSeries(): Promise<{ month: string; saldo: number }[]>;
   getUpdateStatus(): Promise<UpdateStatus>;
   checkForUpdates(): Promise<UpdateStatus>;
   downloadUpdate(): Promise<UpdateStatus>;

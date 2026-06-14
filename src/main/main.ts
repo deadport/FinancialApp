@@ -15,7 +15,7 @@ import {
 } from './db';
 import { importFile, matchNorm } from './importer';
 import { configureAutoUpdates, registerUpdaterIpc } from './updater';
-import type { ManualTransactionInput, TransactionMetadata, TxFilters } from '../shared/types';
+import type { BalanceState, ManualTransactionInput, TransactionMetadata, TxFilters } from '../shared/types';
 
 // Garante que a BD fica sempre em ~/Library/Application Support/FinancialApp
 app.setName('FinancialApp');
@@ -98,6 +98,63 @@ function sendProgress(p: unknown) {
 // Exclui das estatísticas as transações de categorias marcadas como excluídas
 // (ex.: transferências para a própria poupança não são despesa nem receita)
 const EXCL = "(t.category_id IS NULL OR t.category_id NOT IN (SELECT id FROM categories WHERE excluded = 1))";
+const BALANCE_ANCHOR_AMOUNT_KEY = 'balance_anchor_amount';
+const BALANCE_ANCHOR_DATE_KEY = 'balance_anchor_date';
+const BALANCE_ANCHOR_SET_KEY = 'balance_anchor_set';
+const BALANCE_PROMPT_SEEN_KEY = 'balance_prompt_seen';
+
+function getKnownBalance() {
+  const row = getDb().prepare('SELECT COALESCE(SUM(amount), 0) AS balance, COUNT(*) AS count FROM transactions')
+    .get() as { balance: number; count: number };
+  return {
+    computedBalance: Math.round(row.balance * 100) / 100,
+    transactionCount: row.count,
+  };
+}
+
+function getBalanceState(): BalanceState {
+  const known = getKnownBalance();
+  const anchorAmountRaw = getPreference<number | null>(BALANCE_ANCHOR_AMOUNT_KEY, null);
+  const anchorDate = getPreference<string | null>(BALANCE_ANCHOR_DATE_KEY, null);
+  const anchorAmount = typeof anchorAmountRaw === 'number' && Number.isFinite(anchorAmountRaw) ? anchorAmountRaw : null;
+  const hasAnchor = getPreference<boolean>(BALANCE_ANCHOR_SET_KEY, false) === true && anchorAmount != null && !!anchorDate;
+  const promptSeen = getPreference<boolean>(BALANCE_PROMPT_SEEN_KEY, false) === true;
+  const afterAnchor = hasAnchor
+    ? getDb().prepare('SELECT COALESCE(SUM(amount), 0) AS balance, COUNT(*) AS count FROM transactions WHERE date > ?')
+      .get(anchorDate) as { balance: number; count: number }
+    : { balance: known.computedBalance, count: known.transactionCount };
+  const displayedBalance = hasAnchor
+    ? anchorAmount + afterAnchor.balance
+    : known.computedBalance;
+  return {
+    ...known,
+    anchorAmount,
+    anchorDate: hasAnchor ? anchorDate : null,
+    displayedBalance: Math.round(displayedBalance * 100) / 100,
+    hasAnchor,
+    promptSeen,
+    transactionsAfterAnchor: afterAnchor.count,
+  };
+}
+
+function saveBalanceAnchor(amount: number, date: string) {
+  const rounded = Math.round(amount * 100) / 100;
+  setPreference(BALANCE_ANCHOR_AMOUNT_KEY, rounded);
+  setPreference(BALANCE_ANCHOR_DATE_KEY, date);
+  setPreference(BALANCE_ANCHOR_SET_KEY, true);
+  setPreference(BALANCE_PROMPT_SEEN_KEY, true);
+  return getBalanceState();
+}
+
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function dayBefore(value: string) {
+  const d = new Date(`${value}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function registerIpc() {
   registerUpdaterIpc(() => win);
@@ -138,6 +195,50 @@ function registerIpc() {
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => {
     setPreference(key, value);
     return true;
+  });
+
+  ipcMain.handle('balance:get', () => getBalanceState());
+
+  ipcMain.handle('balance:align', (_e, realBalance: number, anchorDate: string) => {
+    const target = Number(realBalance);
+    if (!Number.isFinite(target)) throw new Error('Saldo inválido.');
+    const cleanDate = String(anchorDate ?? '').trim();
+    if (!isIsoDate(cleanDate)) throw new Error('Data do saldo inválida.');
+    return saveBalanceAnchor(target, cleanDate);
+  });
+
+  ipcMain.handle('balance:setInitial', (_e, initialBalance: number) => {
+    const value = Number(initialBalance);
+    if (!Number.isFinite(value)) throw new Error('Saldo inicial inválido.');
+    const first = getDb().prepare('SELECT MIN(date) AS firstDate FROM transactions').get() as { firstDate: string | null };
+    const anchorDate = first.firstDate ? dayBefore(first.firstDate) : new Date().toISOString().slice(0, 10);
+    return saveBalanceAnchor(value, anchorDate);
+  });
+
+  ipcMain.handle('balance:dismissPrompt', () => {
+    setPreference(BALANCE_PROMPT_SEEN_KEY, true);
+    return true;
+  });
+
+  ipcMain.handle('balance:series', () => {
+    const db = getDb();
+    const state = getBalanceState();
+    const rows = state.hasAnchor
+      ? db.prepare(`
+        SELECT STRFTIME('%Y-%m', date) AS month, SUM(amount) AS net
+        FROM transactions WHERE date > ?
+        GROUP BY month ORDER BY month
+      `).all(state.anchorDate) as { month: string; net: number }[]
+      : db.prepare(`
+        SELECT STRFTIME('%Y-%m', date) AS month, SUM(amount) AS net
+        FROM transactions
+        GROUP BY month ORDER BY month
+      `).all() as { month: string; net: number }[];
+    let acc = state.hasAnchor && state.anchorAmount != null ? state.anchorAmount : 0;
+    return rows.map((row) => {
+      acc += row.net;
+      return { month: row.month, saldo: Math.round(acc * 100) / 100 };
+    });
   });
 
   ipcMain.handle('import:pick', async () => {
@@ -500,7 +601,15 @@ function registerIpc() {
         COUNT(*) AS count
       FROM transactions t ${w}
     `).get(from ?? null, to ?? null) as { income: number; expenses: number; count: number };
-    return { ...r, balance: r.income - r.expenses };
+    const balance = getBalanceState();
+    return {
+      ...r,
+      balance: balance.displayedBalance,
+      computedBalance: balance.computedBalance,
+      balanceAnchorAmount: balance.anchorAmount,
+      balanceAnchorDate: balance.anchorDate,
+      balanceAdjusted: balance.hasAnchor,
+    };
   });
 
   ipcMain.handle('stats:monthly', () => {

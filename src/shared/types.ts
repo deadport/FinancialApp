@@ -82,7 +82,22 @@ export interface Summary {
   income: number;
   expenses: number;
   balance: number;
+  computedBalance: number;
+  balanceAnchorAmount: number | null;
+  balanceAnchorDate: string | null;
+  balanceAdjusted: boolean;
   count: number;
+}
+
+export interface BalanceState {
+  computedBalance: number;
+  anchorAmount: number | null;
+  anchorDate: string | null;
+  displayedBalance: number;
+  hasAnchor: boolean;
+  promptSeen: boolean;
+  transactionCount: number;
+  transactionsAfterAnchor: number;
 }
 
 export interface ProjectStat {

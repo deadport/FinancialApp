@@ -5,6 +5,10 @@ export interface ChangelogItem {
 
 export const LATEST_CHANGELOG: ChangelogItem[] = [
   {
+    title: 'Saldo alinhado',
+    body: 'Indica o saldo real da conta para a app compensar históricos bancários incompletos sem alterar transações.',
+  },
+  {
     title: 'Transações manuais',
     body: 'Adiciona despesas ou receitas em dinheiro físico diretamente na lista de transações.',
   },

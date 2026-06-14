@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import iconUrl from '../../assets/icon.png';
 import { useAppStore, Page } from './store';
-import { api, setActiveCurrency } from './api';
-import type { UpdateStatus } from '../shared/types';
+import { api, fmtMoney, setActiveCurrency } from './api';
+import type { BalanceState, UpdateStatus } from '../shared/types';
 import { LATEST_CHANGELOG } from '../shared/changelog';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
@@ -39,6 +39,8 @@ export default function App() {
   const [reminderOpen, setReminderOpen] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const [balanceState, setBalanceState] = useState<BalanceState | null>(null);
 
   useEffect(() => {
     api.getAppState().then((state) => {
@@ -54,6 +56,16 @@ export default function App() {
       if (seen !== appVersion) setChangelogOpen(true);
     });
   }, [appVersion, onboardingCompleted]);
+
+  useEffect(() => {
+    if (!onboardingCompleted) return;
+    api.getBalanceState().then((state) => {
+      setBalanceState(state);
+      if (state.transactionCount > 0 && !state.hasAnchor && !state.promptSeen) {
+        setBalanceOpen(true);
+      }
+    });
+  }, [onboardingCompleted, refreshKey]);
 
   useEffect(() => {
     if (!onboardingCompleted) return;
@@ -142,6 +154,11 @@ export default function App() {
                 window.location.reload();
               }
             }}>⇪</button>
+            <button className="tool-btn" aria-label="Alinhar saldo" title="Alinhar saldo atual com o banco" onClick={async () => {
+              const state = await api.getBalanceState();
+              setBalanceState(state);
+              setBalanceOpen(true);
+            }}>≈</button>
             <button className="tool-btn" aria-label="Lembrete" title="Lembrete mensal para importar extratos" onClick={() => setReminderOpen(true)}>🔔</button>
             <button className="tool-btn" aria-label="Atualizações" title="Procurar atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>↻</button>
           </div>
@@ -190,12 +207,30 @@ export default function App() {
         </div>
       )}
       {reminderOpen && <ReminderModal onClose={() => setReminderOpen(false)} />}
-      {changelogOpen && (
+      {changelogOpen && !balanceOpen && (
         <ChangelogModal
           version={appVersion}
           onClose={async () => {
             if (appVersion) await api.setPreference('release_notes_seen_version', appVersion);
             setChangelogOpen(false);
+          }}
+        />
+      )}
+      {balanceOpen && balanceState && (
+        <BalanceAlignModal
+          state={balanceState}
+          onStateChange={(state) => {
+            setBalanceState(state);
+            bumpRefresh();
+          }}
+          onClose={async () => {
+            await api.dismissBalancePrompt();
+            setBalanceOpen(false);
+          }}
+          onSaved={(state) => {
+            setBalanceState(state);
+            setBalanceOpen(false);
+            bumpRefresh();
           }}
         />
       )}
@@ -260,6 +295,85 @@ function ChangelogModal({ version, onClose }: { version: string; onClose: () => 
         </div>
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>Entendi</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BalanceAlignModal({
+  state,
+  onStateChange,
+  onClose,
+  onSaved,
+}: {
+  state: BalanceState;
+  onStateChange: (state: BalanceState) => void;
+  onClose: () => void;
+  onSaved: (state: BalanceState) => void;
+}) {
+  const [value, setValue] = useState('');
+  const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    const realBalance = Number(value.replace(',', '.'));
+    if (!Number.isFinite(realBalance)) {
+      setError('Indica um saldo válido.');
+      return;
+    }
+    try {
+      const next = await api.alignBalance(realBalance, anchorDate);
+      onSaved(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível alinhar o saldo.');
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal balance-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-kicker">Saldo atual</div>
+        <h2>Alinhar com o banco</h2>
+        <div className="modal-desc muted">Importa primeiro os extratos recentes que já estão refletidos nesse saldo.</div>
+        <div className="balance-current">
+          <span>Saldo calculado com os dados conhecidos</span>
+          <strong>{fmtMoney(state.computedBalance)}</strong>
+        </div>
+        <button className="btn ghost balance-import" disabled={importing} onClick={async () => {
+          setImporting(true);
+          try {
+            await api.pickAndImport();
+            const next = await api.getBalanceState();
+            onStateChange(next);
+            setValue('');
+          } finally {
+            setImporting(false);
+          }
+        }}>
+          {importing ? 'A importar...' : 'Importar extratos recentes'}
+        </button>
+        <label className="modal-field">
+          <span>Qual é o saldo atual da tua conta?</span>
+          <input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0,00"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+          />
+        </label>
+        <label className="modal-field">
+          <span>Esse saldo inclui movimentos até</span>
+          <input type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} />
+        </label>
+        {error && <div className="import-msg error">{error}</div>}
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Agora não</button>
+          <button className="btn" onClick={save}>Alinhar saldo</button>
         </div>
       </div>
     </div>
