@@ -164,8 +164,8 @@ export async function importFile(fileName: string, buffer: Buffer, onProgress: P
     const subCatId = (db.prepare("SELECT id FROM categories WHERE name = 'Subscrições'").get() as { id: number } | undefined)?.id;
 
     const insert = db.prepare(`
-      INSERT OR IGNORE INTO transactions (date, description, amount, currency, category_id, source_file, dedup_hash, is_income, is_subscription, metadata)
-      VALUES (@date, @description, @amount, @currency, @category_id, @source_file, @dedup_hash, @is_income, @is_subscription, @metadata)
+      INSERT OR IGNORE INTO transactions (date, description, amount, currency, category_id, source_file, tx_source, dedup_hash, is_income, is_subscription, metadata)
+      VALUES (@date, @description, @amount, @currency, @category_id, @source_file, @tx_source, @dedup_hash, @is_income, @is_subscription, @metadata)
     `);
 
     let inserted = 0, skipped = 0, errors = 0;
@@ -201,7 +201,7 @@ export async function importFile(fileName: string, buffer: Buffer, onProgress: P
 
         const res = insert.run({
           date, description, amount, currency, category_id,
-          source_file: fileName, dedup_hash,
+          source_file: fileName, tx_source: 'bank', dedup_hash,
           is_income: amount > 0 ? 1 : 0, is_subscription,
           metadata: projectMeta,
         });

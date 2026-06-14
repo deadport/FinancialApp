@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ImportProgress, TxFilters } from '../shared/types';
+import type { ImportProgress, ManualTransactionInput, TxFilters } from '../shared/types';
 
 contextBridge.exposeInMainWorld('api', {
   getAppState: () => ipcRenderer.invoke('app:state'),
@@ -27,7 +27,10 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('import:progress', handler);
   },
   listTransactions: (filters: TxFilters) => ipcRenderer.invoke('tx:list', filters),
+  addManualTransaction: (input: ManualTransactionInput) => ipcRenderer.invoke('tx:addManual', input),
   setTxCategory: (id: number, categoryId: number | null) => ipcRenderer.invoke('tx:setCategory', id, categoryId),
+  setTxCategoryBulk: (ids: number[], categoryId: number | null) => ipcRenderer.invoke('tx:setCategoryBulk', ids, categoryId),
+  categorizeByDescriptions: (descriptions: string[], categoryId: number) => ipcRenderer.invoke('tx:categorizeByDescriptions', descriptions, categoryId),
   setTxMetadata: (id: number, metadata: unknown) => ipcRenderer.invoke('tx:setMetadata', id, metadata),
   txMetaFacets: () => ipcRenderer.invoke('tx:metaFacets'),
   listProjects: () => ipcRenderer.invoke('project:list'),

@@ -16,7 +16,9 @@ function suggestKeyword(desc: string): string {
     .toLowerCase() || desc.trim().toLowerCase();
 }
 
-function GroupRow({ g, cats, onDone }: { g: UncategorizedGroup; cats: Category[]; onDone: (msg: string) => void }) {
+function GroupRow({ g, cats, checked, onCheck, onDone }: {
+  g: UncategorizedGroup; cats: Category[]; checked: boolean; onCheck: () => void; onDone: (msg: string) => void;
+}) {
   const [keyword, setKeyword] = useState(() => suggestKeyword(g.description));
   const [catId, setCatId] = useState('');
   // Pré-seleciona a direção pelo sinal dos valores do grupo
@@ -25,7 +27,8 @@ function GroupRow({ g, cats, onDone }: { g: UncategorizedGroup; cats: Category[]
   );
 
   return (
-    <div className="uncat-card">
+    <div className={`uncat-card ${checked ? 'row-selected' : ''}`}>
+      <input type="checkbox" className="uncat-check" checked={checked} onChange={onCheck} title="Selecionar este grupo" />
       <div className="uncat-info">
         <div className="uncat-desc" title={g.description}>{g.description}</div>
         <div className="muted">
@@ -67,16 +70,38 @@ export default function Uncategorized() {
   const [cats, setCats] = useState<Category[]>([]);
   const [msg, setMsg] = useState('');
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCat, setBulkCat] = useState('');
 
   useEffect(() => {
     api.listUncategorized().then(setGroups);
     api.listCategories().then(setCats);
   }, [refreshKey]);
+  useEffect(() => { setSelected(new Set()); }, [refreshKey]);
 
   const totalTx = groups.reduce((a, g) => a + g.n, 0);
   const filtered = search
     ? groups.filter((g) => g.description.toLowerCase().includes(search.toLowerCase()))
     : groups;
+
+  const toggle = (desc: string) => setSelected((s) => {
+    const next = new Set(s);
+    if (next.has(desc)) next.delete(desc); else next.add(desc);
+    return next;
+  });
+  const allFilteredSelected = filtered.length > 0 && filtered.every((g) => selected.has(g.description));
+  const toggleAll = () => setSelected(allFilteredSelected ? new Set() : new Set(filtered.map((g) => g.description)));
+  const selectedTxCount = groups.filter((g) => selected.has(g.description)).reduce((a, g) => a + g.n, 0);
+  const applyBulk = async () => {
+    if (!bulkCat) return;
+    const descriptions = [...selected];
+    const { updated } = await api.categorizeByDescriptions(descriptions, Number(bulkCat));
+    const name = cats.find((c) => c.id === Number(bulkCat))?.name ?? '';
+    setMsg(`${updated} transações categorizadas como "${name}".`);
+    setSelected(new Set());
+    setBulkCat('');
+    bumpRefresh();
+  };
 
   return (
     <>
@@ -94,13 +119,33 @@ export default function Uncategorized() {
         </div>
         {msg && <div className="import-msg ok" style={{ marginBottom: 14 }}>{msg}</div>}
         <div className="toolbar">
+          {filtered.length > 0 && (
+            <label className="bulk-selectall">
+              <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} /> Selecionar tudo
+            </label>
+          )}
           <input type="text" placeholder="Filtrar descrições…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: '1 1 220px' }} />
         </div>
+
+        {selected.size > 0 && (
+          <div className="bulk-bar">
+            <span>{selected.size} grupo{selected.size === 1 ? '' : 's'} · {selectedTxCount} transaç{selectedTxCount === 1 ? 'ão' : 'ões'}</span>
+            <select value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
+              <option value="">Escolhe a categoria…</option>
+              {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="btn" disabled={!bulkCat} onClick={applyBulk}>Categorizar {selectedTxCount}</button>
+            <button className="btn ghost" onClick={() => setSelected(new Set())}>Limpar</button>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="empty">🎉 {groups.length === 0 ? 'Tudo categorizado!' : 'Nada corresponde ao filtro.'}</div>
         ) : (
           filtered.map((g, i) => (
-            <GroupRow key={`${g.description}-${i}`} g={g} cats={cats} onDone={(m) => { setMsg(m); bumpRefresh(); }} />
+            <GroupRow key={`${g.description}-${i}`} g={g} cats={cats}
+              checked={selected.has(g.description)} onCheck={() => toggle(g.description)}
+              onDone={(m) => { setMsg(m); bumpRefresh(); }} />
           ))
         )}
       </div>

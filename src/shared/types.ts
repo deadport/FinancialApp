@@ -13,10 +13,19 @@ export interface Transaction {
   category_id: number | null;
   category_name?: string | null;
   source_file: string | null;
+  tx_source: 'bank' | 'manual';
   is_income: number;
   is_subscription: number;
   imported_at: string;
   metadata?: TransactionMetadata | null;
+}
+
+export interface ManualTransactionInput {
+  date: string;
+  description?: string;
+  amount: number;
+  kind: 'expense' | 'income';
+  categoryId?: number | null;
 }
 
 export interface Category {

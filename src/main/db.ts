@@ -56,6 +56,7 @@ export function initDb(): Database.Database {
       currency TEXT NOT NULL DEFAULT 'EUR',
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       source_file TEXT,
+      tx_source TEXT NOT NULL DEFAULT 'bank',
       dedup_hash TEXT UNIQUE,
       is_income INTEGER DEFAULT 0,
       is_subscription INTEGER DEFAULT 0,
@@ -117,6 +118,10 @@ export function initDb(): Database.Database {
   if (!txCols.some((c) => c.name === 'metadata')) {
     db.exec('ALTER TABLE transactions ADD COLUMN metadata TEXT');
   }
+  if (!txCols.some((c) => c.name === 'tx_source')) {
+    db.exec("ALTER TABLE transactions ADD COLUMN tx_source TEXT NOT NULL DEFAULT 'bank'");
+    db.exec("UPDATE transactions SET tx_source = 'bank' WHERE tx_source IS NULL OR tx_source = ''");
+  }
 
   upsertSetting(SCHEMA_VERSION_KEY, '1');
   ensureFirstRunState();
@@ -141,6 +146,7 @@ export function getAppState() {
     onboardingCompleted: getSetting(ONBOARDING_COMPLETED_KEY) === 'true',
     schemaVersion: Number(getSetting(SCHEMA_VERSION_KEY) ?? '1'),
     userDataPath: app.getPath('userData'),
+    appVersion: app.getVersion(),
   };
 }
 

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api, fmtDate, fmtMoney } from '../api';
 import { useAppStore } from '../store';
-import type { Category, Transaction, TransactionMetadata } from '../../shared/types';
+import type { Category, ManualTransactionInput, Transaction, TransactionMetadata } from '../../shared/types';
 
 const PAGE_SIZE = 100;
 
 export default function Transactions() {
   const refreshKey = useAppStore((s) => s.refreshKey);
+  const bumpRefresh = useAppStore((s) => s.bumpRefresh);
   const [rows, setRows] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [sum, setSum] = useState(0);
@@ -24,6 +25,7 @@ export default function Transactions() {
   const [projectFilter, setProjectFilter] = useState('');
   const [facets, setFacets] = useState<{ tags: string[]; projects: string[] }>({ tags: [], projects: [] });
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
   const [page, setPage] = useState(0);
 
   useEffect(() => { api.listCategories().then(setCats); }, [refreshKey]);
@@ -52,6 +54,31 @@ export default function Transactions() {
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Seleção em massa
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkCat, setBulkCat] = useState('');
+  useEffect(() => { setSelectedIds(new Set()); }, [search, catFilter, kind, from, to, tagFilter, projectFilter, page, refreshKey]);
+
+  const allVisibleSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
+  const toggleOne = (id: number) => setSelectedIds((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAllVisible = () => setSelectedIds((s) => {
+    if (rows.every((r) => s.has(r.id))) return new Set();
+    return new Set(rows.map((r) => r.id));
+  });
+  const applyBulk = async () => {
+    const ids = [...selectedIds];
+    const categoryId = bulkCat ? Number(bulkCat) : null;
+    await api.setTxCategoryBulk(ids, categoryId);
+    const name = cats.find((c) => c.id === categoryId)?.name ?? null;
+    setRows((rs) => rs.map((r) => selectedIds.has(r.id) ? { ...r, category_id: categoryId, category_name: name } : r));
+    setSelectedIds(new Set());
+    bumpRefresh();
+  };
+
   const changeCat = async (id: number, value: string) => {
     await api.setTxCategory(id, value ? Number(value) : null);
     setRows((rs) => rs.map((r) => r.id === id
@@ -78,6 +105,9 @@ export default function Transactions() {
             const r = await api.exportCsv(filters);
             if (r) window.alert(`${r.count} transações exportadas para:\n${r.path}`);
           }}>📤 Exportar CSV</button>
+          <button className="btn" title="Adicionar uma despesa ou receita que não veio de extrato bancário" onClick={() => setManualOpen(true)}>
+            + Manual
+          </button>
         </div>
       </div>
       <div className="page-body" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -109,22 +139,39 @@ export default function Transactions() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
 
+        {selectedIds.size > 0 && (
+          <div className="bulk-bar">
+            <span>{selectedIds.size} selecionada{selectedIds.size === 1 ? '' : 's'}</span>
+            <select value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
+              <option value="">— Sem categoria —</option>
+              {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="btn" onClick={applyBulk}>Aplicar a {selectedIds.size}</button>
+            <button className="btn ghost" onClick={() => setSelectedIds(new Set())}>Limpar</button>
+          </div>
+        )}
+
         {rows.length === 0 ? (
           <div className="empty">Sem transações para mostrar.</div>
         ) : (
           <div className="table-wrap" style={{ flex: 1, minHeight: 0 }}>
             <table>
               <thead>
-                <tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style={{ textAlign: 'right' }}>Valor</th><th></th></tr>
+                <tr>
+                  <th className="col-check"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Selecionar tudo" /></th>
+                  <th>Data</th><th>Descrição</th><th>Categoria</th><th style={{ textAlign: 'right' }}>Valor</th><th></th>
+                </tr>
               </thead>
               <tbody>
                 {rows.map((t) => (
-                  <tr key={t.id}>
+                  <tr key={t.id} className={selectedIds.has(t.id) ? 'row-selected' : ''}>
+                    <td className="col-check"><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleOne(t.id)} /></td>
                     <td>{fmtDate(t.date)}</td>
                     <td title={t.description}>
                       {t.description}
-                      {(t.metadata?.tags?.length || t.metadata?.project) && (
+                      {(t.tx_source === 'manual' || t.metadata?.tags?.length || t.metadata?.project) && (
                         <div className="tag-chips">
+                          {t.tx_source === 'manual' && <span className="chip source">Manual</span>}
                           {t.metadata?.project && <span className="chip project">📁 {t.metadata.project}</span>}
                           {t.metadata?.tags?.map((tag) => <span key={tag} className="chip">{tag}</span>)}
                         </div>
@@ -172,7 +219,120 @@ export default function Transactions() {
           onSave={(meta) => saveMetadata(editing.id, meta)}
         />
       )}
+      {manualOpen && (
+        <ManualTransactionModal
+          cats={cats}
+          onClose={() => setManualOpen(false)}
+          onCreated={() => {
+            setManualOpen(false);
+            setPage(0);
+            bumpRefresh();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ManualTransactionModal({
+  cats,
+  onClose,
+  onCreated,
+}: {
+  cats: Category[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [kind, setKind] = useState<ManualTransactionInput['kind']>('expense');
+  const [date, setDate] = useState(todayIso());
+  const [amount, setAmount] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [description, setDescription] = useState('');
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    const value = Number(String(amount).replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) {
+      setError('Indica um valor maior que zero.');
+      return;
+    }
+    try {
+      await api.addManualTransaction({
+        kind,
+        date,
+        amount: value,
+        categoryId: categoryId ? Number(categoryId) : null,
+        description,
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível adicionar a transação.');
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Transação manual</h2>
+        <div className="modal-desc muted">Regista movimentos em dinheiro físico ou fora do banco.</div>
+
+        <label className="modal-field">
+          <span>Tipo</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value as ManualTransactionInput['kind'])}>
+            <option value="expense">Despesa</option>
+            <option value="income">Receita</option>
+          </select>
+        </label>
+
+        <div className="modal-grid">
+          <label className="modal-field">
+            <span>Valor</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </label>
+          <label className="modal-field">
+            <span>Data</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+        </div>
+
+        <label className="modal-field">
+          <span>Categoria</span>
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">Sem categoria</option>
+            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+
+        <label className="modal-field">
+          <span>Descrição</span>
+          <input
+            type="text"
+            placeholder="Ex.: almoço em dinheiro"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+
+        {error && <div className="import-msg error">{error}</div>}
+
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn" onClick={save}>Adicionar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

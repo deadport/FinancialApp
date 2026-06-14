@@ -1,12 +1,12 @@
 import type {
   Category, CategoryRule, CategoryStat, ImportProgress, ImportRecord,
-  MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
+  ManualTransactionInput, MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
   TxFilters, UncategorizedGroup, UpdateStatus,
 } from '../shared/types';
 import type { CategoryTemplate } from '../shared/defaultConfig';
 
 export interface Api {
-  getAppState(): Promise<{ onboardingCompleted: boolean; schemaVersion: number; userDataPath: string }>;
+  getAppState(): Promise<{ onboardingCompleted: boolean; schemaVersion: number; userDataPath: string; appVersion: string }>;
   listOnboardingCategories(): Promise<CategoryTemplate[]>;
   completeOnboarding(selectedCategoryNames: string[]): Promise<number>;
   createOnboardingCategories(selectedCategoryNames: string[]): Promise<number>;
@@ -30,7 +30,10 @@ export interface Api {
   importBundle(): Promise<{ path: string; count: number } | null>;
   savingsMonthly(): Promise<{ month: string; net: number }[]>;
   biggestExpenses(): Promise<{ date: string; description: string; total: number }[]>;
+  addManualTransaction(input: ManualTransactionInput): Promise<{ id: number }>;
   setTxCategory(id: number, categoryId: number | null): Promise<boolean>;
+  setTxCategoryBulk(ids: number[], categoryId: number | null): Promise<{ updated: number }>;
+  categorizeByDescriptions(descriptions: string[], categoryId: number): Promise<{ updated: number }>;
   setTxMetadata(id: number, metadata: TransactionMetadata | null): Promise<boolean>;
   txMetaFacets(): Promise<{ tags: string[]; projects: string[] }>;
   listProjects(): Promise<ProjectStat[]>;

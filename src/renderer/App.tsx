@@ -3,6 +3,7 @@ import iconUrl from '../../assets/icon.png';
 import { useAppStore, Page } from './store';
 import { api, setActiveCurrency } from './api';
 import type { UpdateStatus } from '../shared/types';
+import { LATEST_CHANGELOG } from '../shared/changelog';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import ImportPage from './pages/ImportPage';
@@ -36,11 +37,23 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   useEffect(() => {
-    api.getAppState().then((state) => setOnboardingCompleted(state.onboardingCompleted));
+    api.getAppState().then((state) => {
+      setOnboardingCompleted(state.onboardingCompleted);
+      setAppVersion(state.appVersion);
+    });
     api.getPreference('currency', 'EUR').then((c) => setActiveCurrency(c));
   }, []);
+
+  useEffect(() => {
+    if (!onboardingCompleted || !appVersion) return;
+    api.getPreference('release_notes_seen_version', '').then((seen) => {
+      if (seen !== appVersion) setChangelogOpen(true);
+    });
+  }, [appVersion, onboardingCompleted]);
 
   useEffect(() => {
     if (!onboardingCompleted) return;
@@ -91,51 +104,50 @@ export default function App() {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button className="nav-item" title="Guarda uma cópia da base de dados (todas as transações, categorias e regras)" onClick={async () => {
-          const p = await api.backupDb();
-          setBackupMsg(p ? '✓ Backup guardado' : '');
-          if (p) setTimeout(() => setBackupMsg(''), 4000);
-        }}>
-          <span>💾</span> {backupMsg || 'Backup'}
-        </button>
-        <button className="nav-item" title="Restaura um backup completo da base de dados" onClick={async () => {
-          const ok = window.confirm('Restaurar um backup vai substituir a base de dados atual. A app cria primeiro uma cópia de segurança interna. Continuar?');
-          if (!ok) return;
-          const restored = await api.restoreDb();
-          if (restored) {
-            setPage('dashboard');
-            bumpRefresh();
-            window.alert('Backup restaurado. A aplicação vai recarregar para aplicar os dados.');
-            window.location.reload();
-          }
-        }}>
-          <span>↩</span> Restaurar
-        </button>
-        <button className="nav-item" title="Exporta um backup portável em JSON (categorias, regras, transações, definições e layout dos gráficos)" onClick={async () => {
-          const res = await api.exportBundle();
-          setBundleMsg(res ? `✓ Bundle (${res.count} mov.)` : '');
-          if (res) setTimeout(() => setBundleMsg(''), 4000);
-        }}>
-          <span>📦</span> {bundleMsg || 'Exportar bundle'}
-        </button>
-        <button className="nav-item" title="Importa um backup portável em JSON e substitui todos os dados atuais" onClick={async () => {
-          const ok = window.confirm('Importar um bundle vai SUBSTITUIR todos os dados atuais (transações, categorias, regras, definições e layout). A app cria primeiro uma cópia de segurança interna. Continuar?');
-          if (!ok) return;
-          const res = await api.importBundle();
-          if (res) {
-            setPage('dashboard');
-            bumpRefresh();
-            window.alert(`Bundle importado (${res.count} movimentos). A aplicação vai recarregar.`);
-            window.location.reload();
-          }
-        }}>
-          <span>⇪</span> Importar bundle
-        </button>
-        <button className="nav-item" title="Lembrete mensal para importar extratos" onClick={() => setReminderOpen(true)}>
-          <span>🔔</span> Lembrete
-        </button>
-        <button className="nav-item" title="Procura atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>
-          <span>↻</span> Atualizações
+        <div className="sidebar-tools">
+          <div className="sidebar-tools-head">
+            <span>Ferramentas</span>
+            {(backupMsg || bundleMsg) && <strong>{backupMsg || bundleMsg}</strong>}
+          </div>
+          <div className="sidebar-tool-grid">
+            <button className="tool-btn" aria-label="Backup" title="Guardar backup da base de dados" onClick={async () => {
+              const p = await api.backupDb();
+              setBackupMsg(p ? 'Backup guardado' : '');
+              if (p) setTimeout(() => setBackupMsg(''), 4000);
+            }}>💾</button>
+            <button className="tool-btn" aria-label="Restaurar" title="Restaurar backup completo da base de dados" onClick={async () => {
+              const ok = window.confirm('Restaurar um backup vai substituir a base de dados atual. A app cria primeiro uma cópia de segurança interna. Continuar?');
+              if (!ok) return;
+              const restored = await api.restoreDb();
+              if (restored) {
+                setPage('dashboard');
+                bumpRefresh();
+                window.alert('Backup restaurado. A aplicação vai recarregar para aplicar os dados.');
+                window.location.reload();
+              }
+            }}>↩</button>
+            <button className="tool-btn" aria-label="Exportar bundle" title="Exportar bundle portável em JSON" onClick={async () => {
+              const res = await api.exportBundle();
+              setBundleMsg(res ? `Bundle: ${res.count} mov.` : '');
+              if (res) setTimeout(() => setBundleMsg(''), 4000);
+            }}>📦</button>
+            <button className="tool-btn" aria-label="Importar bundle" title="Importar bundle portável em JSON" onClick={async () => {
+              const ok = window.confirm('Importar um bundle vai SUBSTITUIR todos os dados atuais (transações, categorias, regras, definições e layout). A app cria primeiro uma cópia de segurança interna. Continuar?');
+              if (!ok) return;
+              const res = await api.importBundle();
+              if (res) {
+                setPage('dashboard');
+                bumpRefresh();
+                window.alert(`Bundle importado (${res.count} movimentos). A aplicação vai recarregar.`);
+                window.location.reload();
+              }
+            }}>⇪</button>
+            <button className="tool-btn" aria-label="Lembrete" title="Lembrete mensal para importar extratos" onClick={() => setReminderOpen(true)}>🔔</button>
+            <button className="tool-btn" aria-label="Atualizações" title="Procurar atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>↻</button>
+          </div>
+        </div>
+        <button className="nav-item version-item" title="Ver novidades desta versão" onClick={() => setChangelogOpen(true)}>
+          <span>ⓘ</span> v{appVersion || '...'}
         </button>
       </aside>
       <main className="content">
@@ -178,6 +190,15 @@ export default function App() {
         </div>
       )}
       {reminderOpen && <ReminderModal onClose={() => setReminderOpen(false)} />}
+      {changelogOpen && (
+        <ChangelogModal
+          version={appVersion}
+          onClose={async () => {
+            if (appVersion) await api.setPreference('release_notes_seen_version', appVersion);
+            setChangelogOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -216,6 +237,29 @@ function ReminderModal({ onClose }: { onClose: () => void }) {
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose}>Cancelar</button>
           <button className="btn" onClick={save}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChangelogModal({ version, onClose }: { version: string; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal changelog-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-kicker">FinancialApp v{version || '...'}</div>
+        <h2>Novidades</h2>
+        <div className="modal-desc muted">Uma visão rápida do que mudou nesta versão.</div>
+        <div className="changelog-list">
+          {LATEST_CHANGELOG.map((item) => (
+            <div className="changelog-item" key={item.title}>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>Entendi</button>
         </div>
       </div>
     </div>

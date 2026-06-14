@@ -15,7 +15,7 @@ import {
 } from './db';
 import { importFile, matchNorm } from './importer';
 import { configureAutoUpdates, registerUpdaterIpc } from './updater';
-import type { TransactionMetadata, TxFilters } from '../shared/types';
+import type { ManualTransactionInput, TransactionMetadata, TxFilters } from '../shared/types';
 
 // Garante que a BD fica sempre em ~/Library/Application Support/FinancialApp
 app.setName('FinancialApp');
@@ -173,6 +173,39 @@ function registerIpc() {
     return { rows, total: agg.c, sum: agg.s };
   });
 
+  ipcMain.handle('tx:addManual', (_e, input: ManualTransactionInput) => {
+    const db = getDb();
+    const date = String(input?.date ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Data inválida.');
+
+    const rawAmount = Number(input?.amount);
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) throw new Error('Valor inválido.');
+
+    const kind = input?.kind === 'income' ? 'income' : 'expense';
+    const amount = kind === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount);
+    const description = String(input?.description ?? '').trim() || 'Transação manual';
+    const categoryId = input?.categoryId == null ? null : Number(input.categoryId);
+    if (categoryId != null) {
+      const exists = db.prepare('SELECT 1 FROM categories WHERE id = ?').get(categoryId);
+      if (!exists) throw new Error('Categoria inválida.');
+    }
+
+    const subCatId = (db.prepare("SELECT id FROM categories WHERE name = 'Subscrições'").get() as { id: number } | undefined)?.id ?? null;
+    const res = db.prepare(`
+      INSERT INTO transactions (date, description, amount, currency, category_id, source_file, tx_source, dedup_hash, is_income, is_subscription)
+      VALUES (?, ?, ?, 'EUR', ?, NULL, 'manual', NULL, ?, ?)
+    `).run(
+      date,
+      description,
+      amount,
+      categoryId,
+      kind === 'income' ? 1 : 0,
+      kind === 'expense' && categoryId != null && categoryId === subCatId ? 1 : 0,
+    );
+
+    return { id: Number(res.lastInsertRowid) };
+  });
+
   // Guarda/limpa a metadata opcional (tags + projeto) de uma transação
   ipcMain.handle('tx:setMetadata', (_e, id: number, metadata: TransactionMetadata | null) => {
     const clean = normalizeMetadata(metadata);
@@ -276,10 +309,10 @@ function registerIpc() {
     const db = getDb();
     const { clause: w, params } = buildTxWhere(filters);
     const rows = db.prepare(`
-      SELECT t.date, t.description, COALESCE(c.name, '') AS category, t.amount, t.currency
+      SELECT t.date, t.description, COALESCE(c.name, '') AS category, t.amount, t.currency, COALESCE(t.tx_source, 'bank') AS source
       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
       ${w} ORDER BY t.date DESC, t.id DESC
-    `).all(params) as { date: string; description: string; category: string; amount: number; currency: string }[];
+    `).all(params) as { date: string; description: string; category: string; amount: number; currency: string; source: string }[];
     const res = await dialog.showSaveDialog(win, {
       title: 'Exportar transações',
       defaultPath: `transacoes-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -287,8 +320,8 @@ function registerIpc() {
     });
     if (res.canceled || !res.filePath) return null;
     const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
-    const lines = ['Data;Descrição;Categoria;Valor;Moeda',
-      ...rows.map((r) => [r.date, esc(r.description), esc(r.category), String(r.amount).replace('.', ','), r.currency].join(';'))];
+    const lines = ['Data;Descrição;Categoria;Valor;Moeda;Origem',
+      ...rows.map((r) => [r.date, esc(r.description), esc(r.category), String(r.amount).replace('.', ','), r.currency, r.source === 'manual' ? 'Manual' : 'Banco'].join(';'))];
     // BOM para o Excel abrir com acentos corretos
     fs.writeFileSync(res.filePath, '﻿' + lines.join('\r\n'), 'utf-8');
     return { path: res.filePath, count: rows.length };
@@ -426,6 +459,30 @@ function registerIpc() {
   ipcMain.handle('tx:setCategory', (_e, id: number, categoryId: number | null) => {
     getDb().prepare('UPDATE transactions SET category_id = ? WHERE id = ?').run(categoryId, id);
     return true;
+  });
+
+  // Categorização em massa por ids (aba Transações)
+  ipcMain.handle('tx:setCategoryBulk', (_e, ids: number[], categoryId: number | null) => {
+    if (!Array.isArray(ids) || ids.length === 0) return { updated: 0 };
+    const db = getDb();
+    const stmt = db.prepare('UPDATE transactions SET category_id = ? WHERE id = ?');
+    let updated = 0;
+    db.transaction(() => {
+      for (const id of ids) updated += stmt.run(categoryId, id).changes;
+    })();
+    return { updated };
+  });
+
+  // Categorização em massa por descrição, só nas ainda sem categoria (aba Por categorizar)
+  ipcMain.handle('tx:categorizeByDescriptions', (_e, descriptions: string[], categoryId: number) => {
+    if (!Array.isArray(descriptions) || descriptions.length === 0 || categoryId == null) return { updated: 0 };
+    const db = getDb();
+    const stmt = db.prepare('UPDATE transactions SET category_id = ? WHERE category_id IS NULL AND LOWER(description) = LOWER(?)');
+    let updated = 0;
+    db.transaction(() => {
+      for (const d of descriptions) updated += stmt.run(categoryId, d).changes;
+    })();
+    return { updated };
   });
 
   ipcMain.handle('tx:delete', (_e, id: number) => {
