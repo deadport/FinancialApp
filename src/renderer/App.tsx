@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import iconUrl from '../../assets/icon.png';
 import { useAppStore, Page } from './store';
 import { api, fmtMoney, setActiveCurrency } from './api';
-import type { BalanceState, UpdateStatus } from '../shared/types';
-import { LATEST_CHANGELOG } from '../shared/changelog';
+import type { BalanceState, CloudSyncStatus, UpdateStatus } from '../shared/types';
+import { RELEASE_GUIDE_TOKEN } from '../shared/changelog';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import ImportPage from './pages/ImportPage';
@@ -41,6 +41,8 @@ export default function App() {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [balanceState, setBalanceState] = useState<BalanceState | null>(null);
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus | null>(null);
 
   useEffect(() => {
     api.getAppState().then((state) => {
@@ -51,9 +53,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!onboardingCompleted) return;
+    api.cloudStatus().then(setCloudStatus);
+  }, [onboardingCompleted, refreshKey]);
+
+  useEffect(() => {
     if (!onboardingCompleted || !appVersion) return;
-    api.getPreference('release_notes_seen_version', '').then((seen) => {
-      if (seen !== appVersion) setChangelogOpen(true);
+    api.getPreference('release_guide_seen_token', '').then((seen) => {
+      if (seen !== RELEASE_GUIDE_TOKEN) setChangelogOpen(true);
     });
   }, [appVersion, onboardingCompleted]);
 
@@ -98,7 +105,7 @@ export default function App() {
   }
 
   if (!onboardingCompleted) {
-    return <Onboarding onDone={() => setOnboardingCompleted(true)} />;
+    return <Onboarding appVersion={appVersion} onDone={() => setOnboardingCompleted(true)} />;
   }
 
   return (
@@ -159,6 +166,11 @@ export default function App() {
               setBalanceState(state);
               setBalanceOpen(true);
             }}>≈</button>
+            <button className={`tool-btn ${cloudStatus?.linked ? 'active' : ''}`} aria-label="Sincronização" title="Ligar conta e enviar dados locais para a cloud" onClick={async () => {
+              const status = await api.cloudStatus();
+              setCloudStatus(status);
+              setCloudOpen(true);
+            }}>☁</button>
             <button className="tool-btn" aria-label="Lembrete" title="Lembrete mensal para importar extratos" onClick={() => setReminderOpen(true)}>🔔</button>
             <button className="tool-btn" aria-label="Atualizações" title="Procurar atualizações da aplicação" onClick={() => api.checkForUpdates().then(setUpdateStatus)}>↻</button>
           </div>
@@ -207,11 +219,26 @@ export default function App() {
         </div>
       )}
       {reminderOpen && <ReminderModal onClose={() => setReminderOpen(false)} />}
+      {cloudOpen && cloudStatus && (
+        <CloudSyncModal
+          status={cloudStatus}
+          onClose={() => setCloudOpen(false)}
+          onSynced={(status) => {
+            setCloudStatus(status);
+            bumpRefresh();
+          }}
+        />
+      )}
       {changelogOpen && !balanceOpen && (
         <ChangelogModal
           version={appVersion}
+          cloudStatus={cloudStatus}
+          onSynced={(status) => {
+            setCloudStatus(status);
+            bumpRefresh();
+          }}
           onClose={async () => {
-            if (appVersion) await api.setPreference('release_notes_seen_version', appVersion);
+            await api.setPreference('release_guide_seen_token', RELEASE_GUIDE_TOKEN);
             setChangelogOpen(false);
           }}
         />
@@ -278,23 +305,256 @@ function ReminderModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ChangelogModal({ version, onClose }: { version: string; onClose: () => void }) {
+function CloudSyncModal({
+  status,
+  onClose,
+  onSynced,
+}: {
+  status: CloudSyncStatus;
+  onClose: () => void;
+  onSynced: (status: CloudSyncStatus) => void;
+}) {
+  const [mode, setMode] = useState<'login' | 'signup'>(status.linked ? 'login' : 'signup');
+  const [email, setEmail] = useState(status.email ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const counts = status.localCounts;
+
+  const upload = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const next = await api.cloudLinkAndUpload({ email, password, mode });
+      onSynced(next);
+      setNotice('Dados enviados para a cloud. Já podes testar a web com esta conta.');
+      setPassword('');
+    } catch (err) {
+      const message = cleanIpcError(err);
+      if (message.startsWith('Conta criada.')) {
+        setNotice(message);
+        setMode('login');
+        setPassword('');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal changelog-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-kicker">FinancialApp v{version || '...'}</div>
-        <h2>Novidades</h2>
-        <div className="modal-desc muted">Uma visão rápida do que mudou nesta versão.</div>
-        <div className="changelog-list">
-          {LATEST_CHANGELOG.map((item) => (
-            <div className="changelog-item" key={item.title}>
-              <strong>{item.title}</strong>
-              <p>{item.body}</p>
-            </div>
-          ))}
+      <div className="modal cloud-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-kicker">Sincronização privada</div>
+        <h2>Ligar dados locais</h2>
+        <div className="modal-desc muted">
+          Envia uma cópia dos dados deste desktop para a tua conta. A base local continua intacta.
         </div>
+
+        <div className="cloud-summary">
+          <div><strong>{counts.transactions}</strong><span>Transações</span></div>
+          <div><strong>{counts.categories}</strong><span>Categorias</span></div>
+          <div><strong>{counts.rules}</strong><span>Regras</span></div>
+          <div><strong>{counts.imports}</strong><span>Importações</span></div>
+          <div><strong>{counts.preferences}</strong><span>Definições</span></div>
+          <div><strong>{counts.projects}</strong><span>Projetos</span></div>
+        </div>
+
+        {status.linked && (
+          <div className="cloud-linked">
+            <span>Conta ligada</span>
+            <strong>{status.email}</strong>
+            {status.lastSyncAt && <small>Último envio: {new Date(status.lastSyncAt).toLocaleString('pt-PT')}</small>}
+          </div>
+        )}
+
+        <div className="segmented cloud-mode">
+          <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Criar conta</button>
+          <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Entrar</button>
+        </div>
+
+        <label className="modal-field">
+          <span>Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+        </label>
+        <label className="modal-field">
+          <span>Password</span>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+
+        <div className="cloud-note">
+          Antes do envio a app cria um backup interno automático. Repetir este envio não duplica os dados.
+        </div>
+        {error && <div className="import-msg error">{error}</div>}
+        {notice && <div className="import-msg ok">{notice}</div>}
+
         <div className="modal-actions">
-          <button className="btn" onClick={onClose}>Entendi</button>
+          <button className="btn ghost" onClick={onClose}>Fechar</button>
+          <button className="btn" disabled={busy || !status.configured} onClick={upload}>
+            {busy ? 'A enviar...' : status.linked ? 'Reenviar dados' : 'Ligar e enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function cleanIpcError(err: unknown) {
+  const fallback = 'Não foi possível ativar a sincronização.';
+  const raw = err instanceof Error ? err.message : String(err || fallback);
+  return raw
+    .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim() || fallback;
+}
+
+function ChangelogModal({
+  version,
+  cloudStatus,
+  onSynced,
+  onClose,
+}: {
+  version: string;
+  cloudStatus: CloudSyncStatus | null;
+  onSynced: (status: CloudSyncStatus) => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState(1);
+  const [status, setStatus] = useState<CloudSyncStatus | null>(cloudStatus);
+  const [mode, setMode] = useState<'login' | 'signup'>(cloudStatus?.linked ? 'login' : 'signup');
+  const [email, setEmail] = useState(cloudStatus?.email ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    if (status) return;
+    api.cloudStatus().then((next) => {
+      setStatus(next);
+      if (next.email) setEmail(next.email);
+      if (next.linked) setMode('login');
+    });
+  }, [status]);
+
+  const canSubmit = !!status?.configured && email.trim().length > 0 && password.length > 0;
+
+  const linkAccount = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const next = await api.cloudLinkAndUpload({ email: email.trim(), password, mode });
+      setStatus(next);
+      onSynced(next);
+      setPassword('');
+      setNotice('Dados enviados. Usa esta conta na versão web.');
+      setStep(3);
+    } catch (err) {
+      const message = cleanIpcError(err);
+      if (message.startsWith('Conta criada.')) {
+        setNotice(message);
+        setMode('login');
+        setPassword('');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const linkedEmail = status?.email || email;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal changelog-modal web-setup-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-kicker">FinancialApp v{version || '...'}</div>
+        <div className="setup-progress" aria-label={`Passo ${step} de 3`}>
+          {[1, 2, 3].map((n) => <span key={n} className={n <= step ? 'active' : ''} />)}
+        </div>
+
+        {step === 1 && (
+          <div className="setup-step">
+            <h2>Nova versão web</h2>
+            <div className="modal-desc muted">
+              Agora podes consultar os teus dados no telemóvel ou browser. O desktop continua a guardar os dados locais.
+            </div>
+            <div className="setup-note">
+              <strong>Como funciona</strong>
+              <p>Ligas uma conta, a app envia uma cópia dos dados atuais para a tua área privada, e depois usas essa conta na versão web.</p>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="setup-step">
+            <h2>{status?.linked ? 'Conta ligada' : 'Liga a tua conta'}</h2>
+            <div className="modal-desc muted">
+              {status?.linked
+                ? 'Podes reenviar os dados locais para atualizar a cloud, ou avançar para o próximo passo.'
+                : 'Cria conta ou entra. Depois enviamos uma cópia dos dados deste desktop.'}
+            </div>
+
+            {status?.linked && (
+              <div className="cloud-linked">
+                <span>Conta atual</span>
+                <strong>{status.email}</strong>
+                {status.lastSyncAt && <small>Último envio: {new Date(status.lastSyncAt).toLocaleString('pt-PT')}</small>}
+              </div>
+            )}
+
+            <div className="segmented cloud-mode">
+              <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Criar conta</button>
+              <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Entrar</button>
+            </div>
+
+            <label className="modal-field">
+              <span>Email</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+            </label>
+            <label className="modal-field">
+              <span>Password</span>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            </label>
+
+            <div className="cloud-note">Antes do envio a app cria um backup interno automático.</div>
+            {error && <div className="import-msg error">{error}</div>}
+            {notice && <div className="import-msg ok">{notice}</div>}
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="setup-step">
+            <h2>Próximo passo</h2>
+            <div className="modal-desc muted">
+              Abre a versão web e entra com a mesma conta para veres os dados sincronizados.
+            </div>
+            <div className="setup-note">
+              <strong>fwebapp.vercel.app</strong>
+              <p>{linkedEmail ? `Usa ${linkedEmail} para entrar no telemóvel, tablet ou browser.` : 'Usa a conta que acabaste de ligar no desktop.'}</p>
+            </div>
+            <div className="setup-note subtle">
+              <strong>O desktop não muda</strong>
+              <p>A base local continua neste computador. A cloud recebe só uma cópia para consulta fora do desktop.</p>
+            </div>
+          </div>
+        )}
+
+        <div className="modal-actions">
+          {step === 1 && <button className="btn ghost" onClick={onClose}>Agora não</button>}
+          {step > 1 && <button className="btn ghost" disabled={busy} onClick={() => setStep((s) => s - 1)}>Voltar</button>}
+          {step === 1 && <button className="btn" onClick={() => setStep(2)}>Próximo</button>}
+          {step === 2 && status?.linked && <button className="btn ghost" disabled={busy} onClick={() => setStep(3)}>Saltar envio</button>}
+          {step === 2 && (
+            <button className="btn" disabled={busy || !canSubmit} onClick={linkAccount}>
+              {busy ? 'A enviar...' : status?.linked ? 'Reenviar dados' : mode === 'signup' ? 'Criar e enviar' : 'Entrar e enviar'}
+            </button>
+          )}
+          {step === 3 && <button className="btn" onClick={onClose}>Concluir</button>}
         </div>
       </div>
     </div>

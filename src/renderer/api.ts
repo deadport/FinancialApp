@@ -1,6 +1,6 @@
 import type {
   Category, CategoryRule, CategoryStat, ImportProgress, ImportRecord,
-  BalanceState, ManualTransactionInput, MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
+  BalanceState, CloudLinkInput, CloudSyncStatus, ManualTransactionInput, MonthlyStat, ProjectDetail, ProjectStat, RuleDirection, Summary, Transaction, TransactionMetadata,
   TxFilters, UncategorizedGroup, UpdateStatus,
 } from '../shared/types';
 import type { CategoryTemplate } from '../shared/defaultConfig';
@@ -23,6 +23,8 @@ export interface Api {
   checkForUpdates(): Promise<UpdateStatus>;
   downloadUpdate(): Promise<UpdateStatus>;
   installUpdate(): Promise<boolean>;
+  cloudStatus(): Promise<CloudSyncStatus>;
+  cloudLinkAndUpload(input: CloudLinkInput): Promise<CloudSyncStatus>;
   onUpdateStatus(cb: (p: UpdateStatus) => void): () => void;
   pickAndImport(): Promise<string | null>;
   importFile(fileName: string, data: ArrayBuffer, project?: string): Promise<boolean>;

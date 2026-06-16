@@ -1,6 +1,6 @@
 {
   "name": "financialapp",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "App desktop local-first de análise financeira",
   "author": "deadport",
   "repository": {
@@ -25,7 +25,10 @@
     "release:major": "npm version major && git push origin HEAD --tags",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps",
-    "start": "electron ."
+    "start": "electron .",
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "web:preview": "npm --prefix apps/web run preview"
   },
   "build": {
     "appId": "com.deadport.financialapp",

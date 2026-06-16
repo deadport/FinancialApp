@@ -1,31 +1,45 @@
-export interface ChangelogItem {
+import webOverviewImage from '../../assets/release-web-overview.svg';
+import syncStepsImage from '../../assets/release-sync-steps.svg';
+import mobileTabsImage from '../../assets/release-mobile-tabs.svg';
+
+export interface ReleaseGuideSection {
   title: string;
   body: string;
+  image: string;
+  steps: string[];
 }
 
-export const LATEST_CHANGELOG: ChangelogItem[] = [
+export const RELEASE_GUIDE_TOKEN = 'web-launch-2026-06';
+
+export const LATEST_RELEASE_GUIDE: ReleaseGuideSection[] = [
   {
-    title: 'Saldo alinhado',
-    body: 'Indica o saldo real da conta para a app compensar históricos bancários incompletos sem alterar transações.',
+    title: 'Nova versão web para telemóvel e browser',
+    body: 'A FinancialApp passa a ter uma versão web/mobile ligada ao Supabase para consultares os dados sincronizados fora do desktop.',
+    image: webOverviewImage,
+    steps: [
+      'Abre `fwebapp.vercel.app` no telemóvel, tablet ou browser.',
+      'Entra com a mesma conta que ligares no desktop para veres os teus dados sincronizados.',
+      'O desktop continua a guardar o SQLite local e não apaga os teus dados atuais.',
+    ],
   },
   {
-    title: 'Transações manuais',
-    body: 'Adiciona despesas ou receitas em dinheiro físico diretamente na lista de transações.',
+    title: 'Como ligar a sincronização pela primeira vez',
+    body: 'A cloud é opcional. Primeiro ligas a conta no desktop, depois a app envia os dados locais atuais para a tua área privada.',
+    image: syncStepsImage,
+    steps: [
+      'No desktop, abre o botão `☁` na barra lateral.',
+      'Cria conta ou entra, e confirma a ligação da cloud.',
+      'Depois abre a versão web e usa a mesma conta para continuar no telemóvel.',
+    ],
   },
   {
-    title: 'Projetos',
-    body: 'Organiza movimentos de negócio numa área separada do dashboard principal, com detalhe próprio por projeto.',
-  },
-  {
-    title: 'Categorização em massa',
-    body: 'Seleciona várias transações ou grupos por categorizar e aplica uma categoria de uma só vez.',
-  },
-  {
-    title: 'Backups e restauro',
-    body: 'Exporta/importa bundles portáteis e restaura bases de dados completas sem depender da pasta da app.',
-  },
-  {
-    title: 'Atualizações',
-    body: 'A app mostra quando existe uma nova versão e preserva transações, categorias, definições e layout.',
+    title: 'O que já consegues fazer na web',
+    body: 'A experiência mobile foi pensada para consulta rápida, categorização e pequenos ajustes sem aumentar a confusão no ecrã.',
+    image: mobileTabsImage,
+    steps: [
+      'Usa `Resumo` para KPIs, gráficos e subscrições recentes.',
+      'Usa `Projetos`, `Importar` e `Categorias` no footer para as ações principais.',
+      'Movimentos e Conta continuam acessíveis no topo para manter o footer limpo.',
+    ],
   },
 ];

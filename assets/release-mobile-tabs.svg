@@ -1,0 +1,30 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="36" fill="#0F1512"/>
+  <rect x="392" y="44" width="416" height="632" rx="48" fill="#0F1512" stroke="#2C3D34" stroke-width="3"/>
+  <rect x="414" y="84" width="372" height="552" rx="32" fill="#16201A"/>
+  <rect x="438" y="114" width="68" height="24" rx="12" fill="#34D399"/>
+  <rect x="528" y="112" width="142" height="28" rx="14" fill="#1C2922"/>
+  <rect x="700" y="112" width="60" height="28" rx="14" fill="#1C2922"/>
+  <rect x="438" y="172" width="94" height="84" rx="18" fill="#173126"/>
+  <rect x="546" y="172" width="94" height="84" rx="18" fill="#173126"/>
+  <rect x="654" y="172" width="94" height="84" rx="18" fill="#173126"/>
+  <rect x="438" y="286" width="310" height="116" rx="18" fill="#18241D"/>
+  <circle cx="642" cy="344" r="42" fill="#101812"/>
+  <path d="M642 302C665.196 302 684 320.804 684 344C684 367.196 665.196 386 642 386C618.804 386 600 367.196 600 344C600 320.804 618.804 302 642 302ZM642 320C628.745 320 618 330.745 618 344C618 357.255 628.745 368 642 368C655.255 368 666 357.255 666 344C666 330.745 655.255 320 642 320Z" fill="#10B981"/>
+  <rect x="438" y="426" width="310" height="96" rx="18" fill="#18241D"/>
+  <rect x="432" y="558" width="336" height="58" rx="22" fill="#121A15" stroke="#25332B"/>
+  <rect x="448" y="570" width="72" height="34" rx="17" fill="#173126"/>
+  <rect x="532" y="570" width="72" height="34" rx="17" fill="#121A15"/>
+  <rect x="616" y="570" width="72" height="34" rx="17" fill="#121A15"/>
+  <rect x="700" y="570" width="52" height="34" rx="17" fill="#121A15"/>
+  <text x="74" y="164" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="40" font-weight="700">Footer simples e focado</text>
+  <text x="74" y="212" fill="#93AB9D" font-family="Arial, sans-serif" font-size="24">Resumo, Projetos, Importar e Categorias ficam no footer.</text>
+  <text x="74" y="246" fill="#93AB9D" font-family="Arial, sans-serif" font-size="24">Movimentos e Conta sobem para o topo para reduzir clutter.</text>
+  <text x="854" y="164" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="32" font-weight="700">O que já está incluído</text>
+  <text x="854" y="228" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• KPIs compactos</text>
+  <text x="854" y="270" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• Barras mensais recentes</text>
+  <text x="854" y="312" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• Donut por categoria</text>
+  <text x="854" y="354" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• Fixas vs variáveis</text>
+  <text x="854" y="396" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• Subscrições no Resumo</text>
+  <text x="854" y="438" fill="#93AB9D" font-family="Arial, sans-serif" font-size="23">• Projetos e categorias</text>
+</svg>

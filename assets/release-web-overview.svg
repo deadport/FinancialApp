@@ -1,0 +1,34 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="36" fill="#0F1512"/>
+  <rect x="48" y="48" width="1104" height="624" rx="28" fill="#16201A" stroke="#25332B" stroke-width="2"/>
+  <rect x="92" y="94" width="628" height="532" rx="24" fill="#121A15"/>
+  <rect x="124" y="130" width="180" height="36" rx="18" fill="#1E2A23"/>
+  <rect x="124" y="194" width="172" height="110" rx="18" fill="#173126"/>
+  <rect x="314" y="194" width="172" height="110" rx="18" fill="#173126"/>
+  <rect x="504" y="194" width="172" height="110" rx="18" fill="#173126"/>
+  <rect x="124" y="336" width="552" height="132" rx="18" fill="#18241D"/>
+  <rect x="124" y="496" width="552" height="98" rx="18" fill="#18241D"/>
+  <rect x="774" y="112" width="280" height="496" rx="40" fill="#0F1512" stroke="#2C3D34" stroke-width="3"/>
+  <rect x="792" y="146" width="244" height="426" rx="28" fill="#16201A"/>
+  <rect x="816" y="182" width="196" height="42" rx="20" fill="#1C2922"/>
+  <rect x="816" y="252" width="196" height="76" rx="18" fill="#173126"/>
+  <rect x="816" y="346" width="196" height="112" rx="18" fill="#18241D"/>
+  <rect x="816" y="480" width="196" height="58" rx="18" fill="#18241D"/>
+  <rect x="842" y="508" width="144" height="10" rx="5" fill="#10B981" fill-opacity="0.75"/>
+  <circle cx="930" cy="402" r="42" fill="#0F1512"/>
+  <path d="M930 360C953.196 360 972 378.804 972 402C972 425.196 953.196 444 930 444C906.804 444 888 425.196 888 402C888 378.804 906.804 360 930 360ZM930 378C916.745 378 906 388.745 906 402C906 415.255 916.745 426 930 426C943.255 426 954 415.255 954 402C954 388.745 943.255 378 930 378Z" fill="#10B981"/>
+  <rect x="816" y="584" width="196" height="10" rx="5" fill="#25332B"/>
+  <rect x="124" y="130" width="94" height="16" rx="8" fill="#34D399"/>
+  <rect x="236" y="130" width="118" height="16" rx="8" fill="#31453B"/>
+  <rect x="156" y="232" width="18" height="46" rx="9" fill="#6EE7B7"/>
+  <rect x="182" y="212" width="18" height="66" rx="9" fill="#FCA5A5"/>
+  <rect x="208" y="220" width="18" height="58" rx="9" fill="#6EE7B7"/>
+  <rect x="234" y="204" width="18" height="74" rx="9" fill="#FCA5A5"/>
+  <rect x="346" y="224" width="104" height="12" rx="6" fill="#25332B"/>
+  <rect x="346" y="248" width="76" height="12" rx="6" fill="#10B981"/>
+  <rect x="346" y="272" width="122" height="12" rx="6" fill="#25332B"/>
+  <rect x="536" y="226" width="96" height="96" rx="48" fill="#101812"/>
+  <path d="M584 226C610.51 226 632 247.49 632 274C632 300.51 610.51 322 584 322C557.49 322 536 300.51 536 274C536 247.49 557.49 226 584 226ZM584 246C568.536 246 556 258.536 556 274C556 289.464 568.536 302 584 302C599.464 302 612 289.464 612 274C612 258.536 599.464 246 584 246Z" fill="#10B981"/>
+  <text x="124" y="96" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="38" font-weight="700">Desktop + Web sincronizados</text>
+  <text x="124" y="546" fill="#93AB9D" font-family="Arial, sans-serif" font-size="28">Consulta no telemóvel sem perder o modo local-first no desktop.</text>
+</svg>

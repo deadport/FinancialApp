@@ -1,0 +1,24 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="36" fill="#0F1512"/>
+  <rect x="56" y="56" width="1088" height="608" rx="28" fill="#16201A" stroke="#25332B" stroke-width="2"/>
+  <text x="92" y="112" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="38" font-weight="700">Passos para ligar a cloud</text>
+  <text x="92" y="152" fill="#93AB9D" font-family="Arial, sans-serif" font-size="24">Só fazes isto uma vez. Depois a mesma conta funciona na web.</text>
+  <circle cx="154" cy="264" r="44" fill="#10B981"/>
+  <circle cx="154" cy="264" r="26" fill="#0F1512"/>
+  <text x="144" y="274" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="28" font-weight="700">1</text>
+  <rect x="228" y="216" width="840" height="96" rx="22" fill="#121A15" stroke="#25332B"/>
+  <text x="262" y="258" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="30" font-weight="700">No desktop, abre o botão ☁ na barra lateral</text>
+  <text x="262" y="290" fill="#93AB9D" font-family="Arial, sans-serif" font-size="22">A FinancialApp continua local, mas fica pronta para sincronizar quando quiseres.</text>
+  <circle cx="154" cy="400" r="44" fill="#10B981"/>
+  <circle cx="154" cy="400" r="26" fill="#0F1512"/>
+  <text x="144" y="410" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="28" font-weight="700">2</text>
+  <rect x="228" y="352" width="840" height="96" rx="22" fill="#121A15" stroke="#25332B"/>
+  <text x="262" y="394" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="30" font-weight="700">Cria conta ou entra, depois confirma a ligação</text>
+  <text x="262" y="426" fill="#93AB9D" font-family="Arial, sans-serif" font-size="22">O upload inicial envia os dados atuais para a tua área privada no Supabase.</text>
+  <circle cx="154" cy="536" r="44" fill="#10B981"/>
+  <circle cx="154" cy="536" r="26" fill="#0F1512"/>
+  <text x="144" y="546" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="28" font-weight="700">3</text>
+  <rect x="228" y="488" width="840" height="96" rx="22" fill="#121A15" stroke="#25332B"/>
+  <text x="262" y="530" fill="#E6F2EA" font-family="Arial, sans-serif" font-size="30" font-weight="700">Abre a versão web e usa a mesma conta</text>
+  <text x="262" y="562" fill="#93AB9D" font-family="Arial, sans-serif" font-size="22">A partir daí tens Resumo, Projetos, Importar e Categorias no telemóvel.</text>
+</svg>

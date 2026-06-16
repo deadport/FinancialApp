@@ -132,6 +132,38 @@ export interface ImportRecord {
   created_at: string;
 }
 
+export interface CloudSyncStatus {
+  configured: boolean;
+  linked: boolean;
+  email: string | null;
+  userId: string | null;
+  lastSyncAt: string | null;
+  lastSummary: CloudUploadSummary | null;
+  localCounts: {
+    categories: number;
+    rules: number;
+    transactions: number;
+    imports: number;
+    preferences: number;
+    projects: number;
+  };
+}
+
+export interface CloudUploadSummary {
+  categories: number;
+  rules: number;
+  transactions: number;
+  imports: number;
+  preferences: number;
+  projects: number;
+}
+
+export interface CloudLinkInput {
+  email: string;
+  password: string;
+  mode: 'login' | 'signup';
+}
+
 export interface DashboardWidgetPreference {
   order: string[];
   visible: string[];

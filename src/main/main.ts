@@ -15,7 +15,7 @@ import {
 } from './db';
 import { importFile, matchNorm } from './importer';
 import { configureAutoUpdates, registerUpdaterIpc } from './updater';
-import type { BalanceState, ManualTransactionInput, TransactionMetadata, TxFilters } from '../shared/types';
+import type { BalanceState, CloudLinkInput, CloudSyncStatus, CloudUploadSummary, ManualTransactionInput, TransactionMetadata, TxFilters } from '../shared/types';
 
 // Garante que a BD fica sempre em ~/Library/Application Support/FinancialApp
 app.setName('FinancialApp');
@@ -102,6 +102,13 @@ const BALANCE_ANCHOR_AMOUNT_KEY = 'balance_anchor_amount';
 const BALANCE_ANCHOR_DATE_KEY = 'balance_anchor_date';
 const BALANCE_ANCHOR_SET_KEY = 'balance_anchor_set';
 const BALANCE_PROMPT_SEEN_KEY = 'balance_prompt_seen';
+const CLOUD_SYNC_ENABLED_KEY = 'cloud_sync_enabled';
+const CLOUD_SYNC_EMAIL_KEY = 'cloud_sync_email';
+const CLOUD_SYNC_USER_ID_KEY = 'cloud_sync_user_id';
+const CLOUD_SYNC_LAST_AT_KEY = 'cloud_sync_last_at';
+const CLOUD_SYNC_LAST_SUMMARY_KEY = 'cloud_sync_last_summary';
+const SUPABASE_URL = 'https://xfbijpjxrikpohdycweu.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_YHOxR2bCM4hCEJPryn_b8Q_yoUyyq1D';
 
 function getKnownBalance() {
   const row = getDb().prepare('SELECT COALESCE(SUM(amount), 0) AS balance, COUNT(*) AS count FROM transactions')
@@ -195,6 +202,21 @@ function registerIpc() {
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => {
     setPreference(key, value);
     return true;
+  });
+
+  ipcMain.handle('cloud:status', () => getCloudSyncStatus());
+
+  ipcMain.handle('cloud:linkAndUpload', async (_e, input: CloudLinkInput) => {
+    const result = await authenticateSupabase(input);
+    createInternalBackup('before-cloud-sync');
+    const summary = await uploadLocalDataToCloud(result.accessToken, result.user.id, result.user.email ?? input.email);
+    const now = new Date().toISOString();
+    setPreference(CLOUD_SYNC_ENABLED_KEY, true);
+    setPreference(CLOUD_SYNC_EMAIL_KEY, result.user.email ?? input.email);
+    setPreference(CLOUD_SYNC_USER_ID_KEY, result.user.id);
+    setPreference(CLOUD_SYNC_LAST_AT_KEY, now);
+    setPreference(CLOUD_SYNC_LAST_SUMMARY_KEY, summary);
+    return getCloudSyncStatus();
   });
 
   ipcMain.handle('balance:get', () => getBalanceState());
@@ -861,6 +883,283 @@ function registerIpc() {
   ipcMain.handle('imports:list', () => {
     return getDb().prepare('SELECT * FROM imports ORDER BY id DESC LIMIT 30').all();
   });
+}
+
+interface SupabaseUser {
+  id: string;
+  email?: string;
+}
+
+interface SupabaseSessionResult {
+  accessToken: string;
+  user: SupabaseUser;
+}
+
+interface SupabaseAuthPayload {
+  access_token?: string;
+  user?: SupabaseUser;
+  session?: {
+    access_token?: string;
+    user?: SupabaseUser;
+  };
+  error?: string;
+  error_description?: string;
+  msg?: string;
+  message?: string;
+}
+
+interface RemoteCategoryRow {
+  id: string;
+  local_id: string | null;
+  name: string;
+}
+
+interface CategoryCloudInsert {
+  user_id: string;
+  local_id: string;
+  name: string;
+  color: string;
+  excluded: boolean;
+  is_fixed: boolean;
+}
+
+function getLocalCloudCounts() {
+  const db = getDb();
+  const count = (table: string) => (db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c;
+  return {
+    categories: count('categories'),
+    rules: count('category_rules'),
+    transactions: count('transactions'),
+    imports: count('imports'),
+    preferences: count('user_preferences') + count('app_settings'),
+    projects: getProjectRegistry().length,
+  };
+}
+
+function getCloudSyncStatus(): CloudSyncStatus {
+  return {
+    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
+    linked: getPreference<boolean>(CLOUD_SYNC_ENABLED_KEY, false) === true,
+    email: getPreference<string | null>(CLOUD_SYNC_EMAIL_KEY, null),
+    userId: getPreference<string | null>(CLOUD_SYNC_USER_ID_KEY, null),
+    lastSyncAt: getPreference<string | null>(CLOUD_SYNC_LAST_AT_KEY, null),
+    lastSummary: getPreference<CloudUploadSummary | null>(CLOUD_SYNC_LAST_SUMMARY_KEY, null),
+    localCounts: getLocalCloudCounts(),
+  };
+}
+
+async function authenticateSupabase(input: CloudLinkInput): Promise<SupabaseSessionResult> {
+  const email = String(input.email ?? '').trim().toLowerCase();
+  const password = String(input.password ?? '');
+  if (!email || !email.includes('@')) throw new Error('Indica um email válido.');
+  if (password.length < 6) throw new Error('A password deve ter pelo menos 6 caracteres.');
+
+  const path = input.mode === 'signup' ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
+  const payload = await supabaseAuthRequest(path, { email, password });
+  const accessToken = payload.access_token ?? payload.session?.access_token;
+  const user = payload.user ?? payload.session?.user;
+  if (!accessToken || !user?.id) {
+    if (input.mode === 'signup') {
+      throw new Error('Conta criada. Confirma o email, volta à app, escolhe Entrar e carrega em Ligar e enviar.');
+    }
+    throw new Error('Não foi possível iniciar sessão.');
+  }
+  return { accessToken, user: { id: user.id, email: user.email ?? email } };
+}
+
+async function supabaseAuthRequest(pathname: string, body: Record<string, string>): Promise<SupabaseAuthPayload> {
+  const res = await fetch(`${SUPABASE_URL}${pathname}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await readJson<SupabaseAuthPayload>(res);
+  if (!res.ok) {
+    throw new Error(payload.error_description || payload.msg || payload.message || payload.error || 'Falha na autenticação.');
+  }
+  return payload;
+}
+
+async function supabaseUpsert<TInsert extends object, TReturn extends object = TInsert>(
+  table: string,
+  rows: TInsert[],
+  accessToken: string,
+  onConflict: string,
+): Promise<TReturn[]> {
+  if (rows.length === 0) return [];
+  const out: TReturn[] = [];
+  const size = 400;
+  for (let i = 0; i < rows.length; i += size) {
+    const chunk = rows.slice(i, i + size);
+    const url = `${SUPABASE_URL}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify(chunk),
+    });
+    const payload = await readJson<TReturn[] | { message?: string; details?: string; hint?: string }>(res);
+    if (!res.ok) {
+      const error = Array.isArray(payload) ? null : payload;
+      throw new Error(error?.message || error?.details || error?.hint || `Falha ao enviar ${table}.`);
+    }
+    if (Array.isArray(payload)) out.push(...payload);
+  }
+  return out;
+}
+
+async function readJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { message: text } as T;
+  }
+}
+
+async function uploadLocalDataToCloud(accessToken: string, userId: string, email: string): Promise<CloudUploadSummary> {
+  const db = getDb();
+  await supabaseUpsert('profiles', [{
+    user_id: userId,
+    display_name: email.split('@')[0],
+  }], accessToken, 'user_id');
+
+  const categories = db.prepare('SELECT * FROM categories ORDER BY id').all() as {
+    id: number; name: string; color: string; excluded: number; is_fixed: number;
+  }[];
+  const remoteCategories = await supabaseUpsert<CategoryCloudInsert, RemoteCategoryRow>('categories', categories.map((row) => ({
+    user_id: userId,
+    local_id: String(row.id),
+    name: row.name,
+    color: row.color,
+    excluded: Boolean(row.excluded),
+    is_fixed: Boolean(row.is_fixed),
+  })), accessToken, 'user_id,name');
+  const categoryIdByLocal = new Map<string, string>();
+  const categoryIdByName = new Map<string, string>();
+  for (const row of remoteCategories) {
+    if (row.local_id) categoryIdByLocal.set(row.local_id, row.id);
+    categoryIdByName.set(row.name, row.id);
+  }
+  for (const row of categories) {
+    const remote = remoteCategories.find((cat) => cat.name === row.name);
+    if (remote) categoryIdByLocal.set(String(row.id), remote.id);
+  }
+
+  const rules = db.prepare(`
+    SELECT r.*, c.name AS category_name
+    FROM category_rules r LEFT JOIN categories c ON c.id = r.category_id
+    ORDER BY r.id
+  `).all() as { id: number; keyword: string; category_id: number; category_name: string | null; priority: number; direction: string }[];
+  const ruleRows = rules
+    .map((row) => {
+      const categoryId = categoryIdByLocal.get(String(row.category_id)) || (row.category_name ? categoryIdByName.get(row.category_name) : null);
+      if (!categoryId) return null;
+      return {
+        user_id: userId,
+        local_id: String(row.id),
+        category_id: categoryId,
+        keyword: row.keyword,
+        priority: row.priority ?? 0,
+        direction: ['any', 'expense', 'income'].includes(row.direction) ? row.direction : 'any',
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+  await supabaseUpsert('category_rules', ruleRows, accessToken, 'user_id,local_id');
+
+  const transactions = db.prepare('SELECT * FROM transactions ORDER BY id').all() as {
+    id: number; date: string; description: string | null; amount: number; currency: string; category_id: number | null;
+    source_file: string | null; tx_source: string | null; dedup_hash: string | null; is_income: number; is_subscription: number;
+    imported_at: string; metadata: string | null;
+  }[];
+  const txRows = transactions.map((row) => ({
+    user_id: userId,
+    local_id: String(row.id),
+    category_id: row.category_id == null ? null : categoryIdByLocal.get(String(row.category_id)) ?? null,
+    date: row.date,
+    description: row.description || 'Transação',
+    amount: row.amount,
+    currency: row.currency || 'EUR',
+    source_file: row.source_file,
+    tx_source: row.tx_source === 'manual' ? 'manual' : 'bank',
+    dedup_hash: row.dedup_hash,
+    is_income: Boolean(row.is_income),
+    is_subscription: Boolean(row.is_subscription),
+    imported_at: normalizeSqliteTimestamp(row.imported_at),
+    metadata: parseJsonValue(row.metadata),
+  }));
+  await supabaseUpsert('transactions', txRows, accessToken, 'user_id,local_id');
+
+  const imports = db.prepare('SELECT * FROM imports ORDER BY id').all() as {
+    id: number; file_name: string | null; inserted: number; skipped: number; created_at: string;
+  }[];
+  await supabaseUpsert('imports', imports.map((row) => ({
+    user_id: userId,
+    local_id: String(row.id),
+    file_name: row.file_name,
+    inserted: row.inserted ?? 0,
+    skipped: row.skipped ?? 0,
+    created_at: normalizeSqliteTimestamp(row.created_at),
+  })), accessToken, 'user_id,local_id');
+
+  const projectRows = getProjectRegistry().map((name) => ({ user_id: userId, name }));
+  await supabaseUpsert('projects', projectRows, accessToken, 'user_id,name');
+
+  const prefs = collectCloudPreferences(userId);
+  await supabaseUpsert('user_preferences', prefs, accessToken, 'user_id,key');
+
+  return {
+    categories: categories.length,
+    rules: rules.length,
+    transactions: transactions.length,
+    imports: imports.length,
+    preferences: prefs.length,
+    projects: projectRows.length,
+  };
+}
+
+function collectCloudPreferences(userId: string) {
+  const db = getDb();
+  const preferences = db.prepare('SELECT key, value FROM user_preferences ORDER BY key').all() as { key: string; value: string }[];
+  const settings = db.prepare('SELECT key, value FROM app_settings ORDER BY key').all() as { key: string; value: string }[];
+  const rows = preferences
+    .filter((row) => !row.key.startsWith('cloud_sync_'))
+    .map((row) => ({
+      user_id: userId,
+      key: row.key,
+      value: parseJsonValue(row.value),
+    }));
+  for (const row of settings) {
+    rows.push({
+      user_id: userId,
+      key: `app_settings.${row.key}`,
+      value: row.value,
+    });
+  }
+  return rows;
+}
+
+function parseJsonValue(value: string | null): unknown {
+  if (value == null || value === '') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeSqliteTimestamp(value: string | null | undefined) {
+  if (!value) return new Date().toISOString();
+  if (value.includes('T')) return value;
+  return `${value.replace(' ', 'T')}Z`;
 }
 
 // Lembrete mensal opcional: notificação local a partir do dia escolhido.

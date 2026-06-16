@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import iconUrl from '../../../assets/icon.png';
 import { api, fmtMoney, setActiveCurrency } from '../api';
+import { RELEASE_GUIDE_TOKEN } from '../../shared/changelog';
 import { useAppStore } from '../store';
 import type { CategoryTemplate } from '../../shared/defaultConfig';
 import type { Category, ImportProgress, UncategorizedGroup } from '../../shared/types';
 
 interface OnboardingProps {
+  appVersion: string;
   onDone: () => void;
 }
 
@@ -51,7 +53,7 @@ interface Summary {
   rules: number;
 }
 
-export default function Onboarding({ onDone }: OnboardingProps) {
+export default function Onboarding({ appVersion, onDone }: OnboardingProps) {
   const bumpRefresh = useAppStore((s) => s.bumpRefresh);
   const [step, setStep] = useState(1);
   const [categories, setCategories] = useState<CategoryTemplate[]>([]);
@@ -116,6 +118,11 @@ export default function Onboarding({ onDone }: OnboardingProps) {
     api.setPreference('currency', code);
   };
 
+  const markReleaseSeen = async () => {
+    await api.setPreference('release_guide_seen_token', RELEASE_GUIDE_TOKEN);
+    if (appVersion) await api.setPreference('release_notes_seen_version', appVersion);
+  };
+
   const sendFiles = async (files: FileList | File[]) => {
     const valid = Array.from(files).filter((f) => /\.(csv|tsv|xlsx|xls)$/i.test(f.name));
     if (valid.length === 0) {
@@ -150,6 +157,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
   const finish = async () => {
     setSaving(true);
     await api.applyRules();
+    await markReleaseSeen();
     await api.finishOnboarding();
     bumpRefresh();
     onDone();
@@ -169,6 +177,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
   const skipSetup = async () => {
     setSaving(true);
     await api.createOnboardingCategories(Array.from(selected));
+    await markReleaseSeen();
     await api.finishOnboarding();
     bumpRefresh();
     onDone();
@@ -192,11 +201,13 @@ export default function Onboarding({ onDone }: OnboardingProps) {
 
         {step === 1 && (
           <div className="onboarding-content">
-            <h1>Organiza o teu dinheiro num espaço local e privado.</h1>
-            <p>
-              Importa extratos, escolhe categorias, acompanha despesas e ajusta a análise ao teu ritmo.
-              Os dados ficam guardados neste computador.
-            </p>
+            <h1>Vamos preparar a app.</h1>
+            <p>Escolhe a moeda, confirma as categorias e importa um extrato. O resto podes ajustar depois.</p>
+            <div className="onboarding-steps">
+              <div><strong>1</strong><span>Moeda</span></div>
+              <div><strong>2</strong><span>Categorias</span></div>
+              <div><strong>3</strong><span>Extratos</span></div>
+            </div>
             <label className="onboarding-field">
               <span>Moeda principal</span>
               <select value={currency} onChange={(e) => chooseCurrency(e.target.value)}>
@@ -205,7 +216,7 @@ export default function Onboarding({ onDone }: OnboardingProps) {
             </label>
             <div className="onboarding-actions">
               <button className="btn" ref={primaryBtn} onClick={() => setStep(2)}>Começar</button>
-              <button className="btn ghost" disabled={saving} onClick={skipSetup}>Saltar configuração</button>
+              <button className="btn ghost" disabled={saving} onClick={skipSetup}>Abrir sem importar</button>
             </div>
             <div className="onboarding-restore">
               Já usavas a app noutro computador?{' '}
@@ -216,8 +227,8 @@ export default function Onboarding({ onDone }: OnboardingProps) {
 
         {step === 2 && (
           <div className="onboarding-content">
-            <h1>Escolhe as categorias iniciais.</h1>
-            <p>Podes ativar só as que fazem sentido agora e criar mais categorias mais tarde.</p>
+            <h1>Categorias iniciais.</h1>
+            <p>Deixei uma base pronta. Remove só o que não queres ver na app.</p>
             <div className="onboarding-subtoolbar">
               <span className="muted">{selected.size} de {categories.length} selecionadas</span>
               <div>
@@ -261,8 +272,8 @@ export default function Onboarding({ onDone }: OnboardingProps) {
 
         {step === 3 && (
           <div className="onboarding-content">
-            <h1>Importa os teus extratos.</h1>
-            <p>Podes saltar este passo e importar ficheiros mais tarde a partir da app.</p>
+            <h1>Importa um extrato.</h1>
+            <p>Arrasta um ficheiro do banco. Se preferires, podes abrir a app e importar mais tarde.</p>
             <div
               className={`dropzone compact ${over ? 'over' : ''}`}
               onClick={() => fileInput.current?.click()}
@@ -323,10 +334,10 @@ export default function Onboarding({ onDone }: OnboardingProps) {
 
         {step === 5 && (
           <div className="onboarding-content">
-            <h1>Alinha o saldo inicial.</h1>
+            <h1>Saldo inicial.</h1>
             <p>
-              Se os extratos não cobrem todo o histórico da conta, indica qual era aproximadamente
-              o saldo antes do primeiro movimento conhecido. A app usa isto só para mostrar o saldo atual correto.
+              Se o extrato começa a meio da tua história, indica o saldo antes do primeiro movimento.
+              Isto só serve para calcular o saldo atual.
             </p>
             {summary && summary.from && (
               <div className="balance-current onboarding-balance-note">
@@ -366,8 +377,8 @@ export default function Onboarding({ onDone }: OnboardingProps) {
 
         {step === 6 && (
           <div className="onboarding-content">
-            <h1>Tudo pronto.</h1>
-            <p>Podes alterar categorias, importar mais extratos e personalizar gráficos quando quiseres.</p>
+            <h1>Pronto.</h1>
+            <p>A app está preparada. Agora podes ver o dashboard, rever movimentos e importar mais extratos quando precisares.</p>
             <div className="onboarding-summary">
               <div><strong>{summary?.categories ?? selected.size}</strong><span>Categorias</span></div>
               <div><strong>{summary?.transactions ?? 0}</strong><span>Movimentos</span></div>
@@ -434,10 +445,9 @@ function AssistStep({
 
   return (
     <div className="onboarding-content">
-      <h1>Categoriza o que ficou por encaixar.</h1>
+      <h1>Categorias automáticas.</h1>
       <p>
-        Estas são as descrições mais frequentes que nenhuma regra apanhou. Escolhe a categoria
-        para cada uma — fica guardada como regra e aplica-se também a importações futuras.
+        Se houver descrições repetidas, escolhe a categoria uma vez. A app guarda isso para os próximos extratos.
       </p>
       {loading ? (
         <div className="muted">A analisar...</div>

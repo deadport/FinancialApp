@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ImportProgress, ManualTransactionInput, TxFilters } from '../shared/types';
+import type { CloudLinkInput, ImportProgress, ManualTransactionInput, TxFilters } from '../shared/types';
 
 contextBridge.exposeInMainWorld('api', {
   getAppState: () => ipcRenderer.invoke('app:state'),
@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  cloudStatus: () => ipcRenderer.invoke('cloud:status'),
+  cloudLinkAndUpload: (input: CloudLinkInput) => ipcRenderer.invoke('cloud:linkAndUpload', input),
   onUpdateStatus: (cb: (p: unknown) => void) => {
     const handler = (_e: unknown, p: unknown) => cb(p);
     ipcRenderer.on('update:status', handler);
