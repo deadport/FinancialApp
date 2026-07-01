@@ -35,6 +35,70 @@ app.on('second-instance', () => {
 
 let win: BrowserWindow | null = null;
 
+function logStartup(message: string, err?: unknown) {
+  try {
+    const dir = app.getPath('userData');
+    fs.mkdirSync(dir, { recursive: true });
+    const logPath = path.join(dir, 'startup.log');
+    const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : err ? String(err) : '';
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${message}${detail ? `\n${detail}` : ''}\n`);
+  } catch {
+    // Evita falhar de novo só por não conseguir escrever o log.
+  }
+}
+
+function moveIfExists(filePath: string, nextPath: string) {
+  if (fs.existsSync(filePath)) fs.renameSync(filePath, nextPath);
+}
+
+function latestInternalBackup() {
+  const dir = path.join(app.getPath('userData'), 'backups');
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir)
+    .filter((name) => name.endsWith('.db'))
+    .map((name) => ({ path: path.join(dir, name), mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  return files[0]?.path ?? null;
+}
+
+function recoverStartupDatabase(err: unknown) {
+  const dbPath = path.join(app.getPath('userData'), 'financialapp.db');
+  const stamp = timestampForFile();
+  const recoveryDir = path.join(app.getPath('userData'), 'recovery');
+  fs.mkdirSync(recoveryDir, { recursive: true });
+  try {
+    moveIfExists(dbPath, path.join(recoveryDir, `financialapp-failed-${stamp}.db`));
+    moveIfExists(`${dbPath}-wal`, path.join(recoveryDir, `financialapp-failed-${stamp}.db-wal`));
+    moveIfExists(`${dbPath}-shm`, path.join(recoveryDir, `financialapp-failed-${stamp}.db-shm`));
+  } catch (moveErr) {
+    logStartup('Falha ao mover base de dados antiga para recovery.', moveErr);
+  }
+
+  const backupPath = latestInternalBackup();
+  if (!backupPath) {
+    logStartup('Sem backup interno para recuperar o arranque.', err);
+    return false;
+  }
+
+  try {
+    fs.copyFileSync(backupPath, dbPath);
+    logStartup(`Base de dados restaurada a partir do backup ${backupPath}.`, err);
+    return true;
+  } catch (copyErr) {
+    logStartup('Falha ao restaurar backup interno durante o arranque.', copyErr);
+    return false;
+  }
+}
+
+function showStartupFailure(err: unknown) {
+  const detail = err instanceof Error ? err.message : String(err);
+  logStartup('Arranque falhou.', err);
+  dialog.showErrorBox(
+    'FinancialApp não conseguiu arrancar',
+    `A aplicação encontrou um erro ao abrir. Verifica o ficheiro startup.log em ${app.getPath('userData')}.\n\n${detail}`,
+  );
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -53,9 +117,20 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
-app.whenReady().then(() => {
-  initDb();
-  createInternalBackup('startup');
+function bootApp() {
+  try {
+    initDb();
+  } catch (err) {
+    logStartup('initDb falhou no arranque inicial.', err);
+    if (!recoverStartupDatabase(err)) throw err;
+    initDb();
+  }
+
+  try {
+    createInternalBackup('startup');
+  } catch (err) {
+    logStartup('Backup interno de startup falhou.', err);
+  }
 
   // Ícone próprio na Dock (em vez do ícone genérico do Electron)
   const iconPath = path.join(__dirname, '../assets/icon.png');
@@ -84,6 +159,24 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}
+
+process.on('uncaughtException', (err) => {
+  logStartup('uncaughtException', err);
+  showStartupFailure(err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logStartup('unhandledRejection', reason);
+});
+
+app.whenReady().then(() => {
+  try {
+    bootApp();
+  } catch (err) {
+    showStartupFailure(err);
+    app.quit();
+  }
 });
 
 // Fechar a janela termina a app (inclusive em macOS) — "fechar o local fecha o host"

@@ -47,6 +47,12 @@ export default function Projects() {
   const expenses = active?.expenses ?? 0;
   const profit = income - expenses;
   const margin = income > 0 ? (profit / income) * 100 : 0;
+  const tooltipStyle = {
+    background: '#16201a',
+    border: '1px solid #25332b',
+    borderRadius: 8,
+    color: '#e6f2ea',
+  } as const;
 
   return (
     <>
@@ -123,7 +129,9 @@ export default function Projects() {
                       <XAxis dataKey="month" stroke="#93ab9d" fontSize={12} />
                       <YAxis stroke="#93ab9d" fontSize={12} />
                       <Tooltip
-                        contentStyle={{ background: '#16201a', border: '1px solid #25332b', borderRadius: 8 }}
+                        contentStyle={tooltipStyle}
+                        labelStyle={{ color: '#e6f2ea' }}
+                        itemStyle={{ color: '#e6f2ea' }}
                         formatter={(v: number) => [fmtMoney(v), 'Lucro']}
                       />
                       <Bar dataKey="profit" name="Lucro" radius={[4, 4, 0, 0]}>
@@ -151,7 +159,9 @@ export default function Projects() {
                       <XAxis dataKey="month" stroke="#93ab9d" fontSize={12} />
                       <YAxis stroke="#93ab9d" fontSize={12} />
                       <Tooltip
-                        contentStyle={{ background: '#16201a', border: '1px solid #25332b', borderRadius: 8 }}
+                        contentStyle={tooltipStyle}
+                        labelStyle={{ color: '#e6f2ea' }}
+                        itemStyle={{ color: '#e6f2ea' }}
                         formatter={(v: number) => [fmtMoney(v), 'Acumulado']}
                       />
                       <Area type="monotone" dataKey="cumulative" name="Acumulado" stroke="#34d399" strokeWidth={2} fill="url(#cumFill)" />

@@ -31,6 +31,9 @@ function updatesDisabledReason(): string | null {
   if (process.env.FINANCIALAPP_DISABLE_UPDATES === '1') {
     return 'Atualizações desativadas nesta build beta privada.';
   }
+  if (process.platform === 'darwin') {
+    return 'Atualizações automáticas no macOS ainda não estão disponíveis. Instala a versão mais recente manualmente.';
+  }
   if (app.isPackaged) {
     const markerPath = path.join(process.resourcesPath, 'private-beta');
     if (fs.existsSync(markerPath)) {
